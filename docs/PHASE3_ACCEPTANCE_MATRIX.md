@@ -2,7 +2,7 @@
 
 Final status is authoritative only when `Artifacts/Reports/phase3-verification-last.json`, plugin/package manifests, gameplay trace, and Draft PR all name the same clean revision.
 
-| Goal condition | Proof | Evidence | Status before final aggregate |
+| Goal condition | Proof | Evidence | Final status |
 |---|---|---|---|
 | Latest `origin/main` base | fresh fetch; base `9a306f8...` | PACT-30 evidence | Passed |
 | Independent feature branch | `feat/phase3-playable-vertical-slice` from base | Git history | Passed |
@@ -27,9 +27,9 @@ Final status is authoritative only when `Artifacts/Reports/phase3-verification-l
 | Win64 Build/Cook/Stage/Pak/Archive | BuildCookRun | gameplay package manifest/log | Passed |
 | Ordinary packaged EXE | non-smoke capture path exit 0 | `last-gameplay-package.json` | Passed |
 | Packaged gameplay smoke | exit 0, trace, images, strict log audit | packaged summary/trace | Passed |
-| Documentation/AI honesty | Phase 3 docs and disclosure | tracked docs | Pending final review |
-| Repository clean/auditable | no generated paths, placeholders, diff errors | AuditRepository + Git | Pending final aggregate |
-| Exact final revision | all manifests agree after docs commit | `phase3-verification-last.json` | Pending final aggregate |
-| Branch pushed / Draft PR | remote branch and PR body evidence | GitHub | Pending |
+| Documentation/AI honesty | Phase 3 docs and disclosure | tracked docs | Passed |
+| Repository clean/auditable | no generated paths, placeholders, diff errors | AuditRepository + Git | Passed |
+| Exact final revision | all manifests agree after finalization commit | `phase3-verification-last.json` | Passed |
+| Branch pushed / Draft PR | remote branch and PR body evidence | GitHub Draft PR #1 | Passed |
 
 `v0.3.0` is candidate metadata only. No tag, formal Release, or merge is authorized.

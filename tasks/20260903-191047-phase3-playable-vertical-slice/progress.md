@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Active PACT: PACT-34 — first aggregate functionally green but rejected for Cook commandlet log-path escape; project-local UAT correction pending commit/reverification.
+- PACT-30 through PACT-34 are implemented, documented, and represented by separate contract/evidence commits.
 - Branch: `feat/phase3-playable-vertical-slice`.
-- Base: `9a306f8ff72cb660d3c04b09806787df21191d45`.
-- Last committed HEAD: `96f88cb3ddceb7f264873361a174ed695438b994` (PACT-34 candidate docs/version/screenshots).
-- Production behavior changes: PACT-30 through PACT-34 are committed; only complete project-local UAT diagnostic redirection is in the worktree.
+- Immutable base: `9a306f8ff72cb660d3c04b09806787df21191d45` / `v0.2.0`.
+- Pre-final evidence commit: `5157b9d8aa5327a3ad25a4f0fb65b7a1904a6ecc`; it completed project-local UAT log/final/commandlet-saved redirection.
+- The self-referential final commit is intentionally not hard-coded here. At handoff, the exact current HEAD is the matching `sourceRevision` in `Artifacts/Reports/phase3-verification-last.json`, both package manifests, the gameplay trace, the pushed remote branch, and Draft PR #1.
 - Blockers: none.
-- Next action: commit the `uebp_EngineSavedFolder` correction, then rerun `VerifyPhase3.ps1` from the new clean exact revision and inspect every manifest/path before push/PR.
+- Publication boundary: Draft PR only; no merge, `v0.3.0` tag, or formal Release.
 
 ## Verified commands
 
@@ -37,14 +37,14 @@
 | `Scripts/PackageGameplay.ps1 -Seed 24301 -TimeoutSeconds 300` | Build/Cook/Stage/Pak/Archive, ordinary EXE, packaged smoke/JSON/3 PNG passed | `Artifacts/Package/last-gameplay-package.json`; `Artifacts/Reports/Gameplay/20260903-201808/summary.json` |
 | `Scripts/Build.ps1` after 0.3.0 metadata/docs | Passed | `Artifacts/Logs/build-editor-20260903-202947.log` |
 | `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` after 0.3.0 metadata/docs | 63 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-203021.log`; `Artifacts/Reports/automation-20260903-203021` |
+| `Scripts/VerifyPhase3.ps1` at the final clean revision | Repository/build/load, 63 tests, Editor smoke, Inspector, Phase 2 report, BuildPlugin, BuildCookRun, ordinary package launch, and packaged gameplay smoke passed | `Artifacts/Reports/phase3-verification-last.json`; current plugin/gameplay package manifests |
 
-## Risks
+## Residual limitations
 
-- Collision and input behavior must be proven in both ordinary and offscreen packaged modes; Editor Automation alone is insufficient.
-- Gameplay classes increase standalone plugin target surface, so BuildPlugin remains a mandatory early integration gate after PACT-32.
-- Runtime screenshots are asynchronous; the smoke state driver must own explicit screenshot completion/timeout semantics rather than rely on arbitrary sleeps.
-- Encounter identity is new and independent; any change to existing layout hashes is a blocker.
+- The packaged rapid multi-capture combat frame can clip its left HUD edge; packaged start/win and Editor combat remain complete evidence.
+- Whole-run determinism, other platforms, production art/audio, networking, persistence, and large-map pathfinding remain outside scope.
+- Future changes must preserve encounter/layout version separation and rerun the complete clean-revision aggregate.
 
 ## Time status
 
-Feature freeze is 2026-09-05 13:00 (UTC+8). No scope degradation is currently required.
+The candidate completed before the 2026-09-05 13:00 (UTC+8) feature freeze. No P0 scope was degraded.

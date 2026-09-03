@@ -39,6 +39,13 @@
 
 ## PACT-34 and final authority
 
-The final documentation/version commit is followed by a clean `Scripts/VerifyPhase3.ps1`. Record its exact revision, 0.3.0 plugin/demo archives and SHA-256, 63-test report, Editor/package gameplay summaries, UAT redirected log roots, repository audit, remote branch, and Draft PR here before final handoff.
+- Candidate documentation/version/screenshots commit: `96f88cb`.
+- Complete project-local AutomationTool log/final/commandlet-saved correction: `5157b9d`.
+- A pre-final aggregate at `96f88cb` passed every functional gate but was rejected because Cook's temporary log still selected the installed Engine Saved directory. The corrected scripts set all three UAT environment boundaries; the accepted aggregate shows Cook/Pak/IoStore response paths under `Artifacts/Logs/uat-*`.
+- At handoff, `Artifacts/Reports/phase3-verification-last.json` is `Passed`, version 0.3.0, and names the exact Git HEAD.
+- The current `Artifacts/Plugin/last-plugin-package.json`, `Artifacts/Package/last-gameplay-package.json`, latest Phase 2 summary, and packaged gameplay trace/summary name that same revision.
+- Final Automation is 63 passed, 0 warnings, 0 failures, 0 not-run, and 0 in-process.
+- The remote feature branch resolves to the same HEAD and Draft PR #1 is open, unmerged, based on the immutable 0.2.0 `main` revision.
+- No remote `v0.3.0` tag or formal Release exists.
 
-Until that section is filled with a clean exact-revision run, the PACT-33 artifacts remain verified fallback evidence rather than the 0.3.0 final candidate.
+The exact final SHA, timestamped artifact paths, and SHA-256 values are read from those machine-readable files and the Draft PR body rather than duplicated into this self-referential tracked document.
