@@ -246,3 +246,15 @@ Status: **Passed** on 2026-09-03 (UTC+8).
   - `Artifacts/Logs/build-editor-20260903-132701.log`
   - `Artifacts/Logs/automation-20260903-132748.log`
   - `Artifacts/Reports/automation-20260903-132748/index.json`
+
+## Aggregate verification diagnostic
+
+- The first clean-revision `VerifyAll.ps1` attempt passed repository audit, Editor build, and headless smoke, then correctly stopped at Automation because one test was marked `SucceededWithWarnings`.
+- The warning was an unrelated UE 5.8 Editor Home Screen request to `https://www.google.com/generate_204` timing out during the long async test event window.
+- Engine source identified the owning `HomeScreen.EnableHomeScreen` CVar. The project disables the Home Screen for deterministic automation rather than weakening the warning gate.
+- The same complete Automation check then passed 25 tests with zero warnings/failures/not-run/in-process tests.
+- Evidence:
+  - Warning run: `Artifacts/Logs/automation-20260903-133747.log`
+  - Warning report: `Artifacts/Reports/automation-20260903-133747/index.json`
+  - Corrected run: `Artifacts/Logs/automation-20260903-134032.log`
+  - Corrected report: `Artifacts/Reports/automation-20260903-134032/index.json`
