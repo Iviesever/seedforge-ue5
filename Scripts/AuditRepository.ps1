@@ -19,6 +19,7 @@ $requiredFiles = @(
     'docs\CODE_WALKTHROUGH.md',
     'docs\INTERVIEW_GUIDE.md',
     'docs\KNOWN_LIMITATIONS.md',
+    'docs\FINAL_HANDOFF.md',
     'docs\ROLLBACK.md'
 )
 
@@ -62,4 +63,3 @@ if ($RequireClean) {
 }
 
 Write-Host "Repository audit passed: $($trackedFiles.Count) tracked files, $($sourceFiles.Count) source/build-rule files."
-

@@ -258,3 +258,23 @@ Status: **Passed** on 2026-09-03 (UTC+8).
   - Warning report: `Artifacts/Reports/automation-20260903-133747/index.json`
   - Corrected run: `Artifacts/Logs/automation-20260903-134032.log`
   - Corrected report: `Artifacts/Reports/automation-20260903-134032/index.json`
+
+## Clean-revision aggregate RC2
+
+Status: **Passed** for revision `5f5a5498ec6d821751c733ed6db57698dea7fb0d` on 2026-09-03 (UTC+8).
+
+`Scripts/VerifyAll.ps1` ran the following gates sequentially from a clean worktree:
+
+1. Repository audit.
+2. UE 5.8 Editor build.
+3. Headless project/plugin smoke.
+4. Complete 25-test UE Automation suite.
+5. Editor-game runtime capture.
+6. Independent BuildPlugin for Editor/Game Development/Game Shipping.
+7. Win64 BuildCookRun.
+8. Packaged executable hash/instance/screenshot/clean-exit smoke.
+
+- Verification summary: `Artifacts/Reports/verification-last.json`.
+- Plugin archive SHA-256: `4dcec3e27eab6471554e228741169bb467960469588b883860bf9502d7776ff2`.
+- Demo archive SHA-256: `99bc7959c69ea1620ea9b934976742cad8a60ebd283070e7110922adff8465f7`.
+- Final documentation changes are followed by one more identical clean-revision aggregate run so the delivered source and binaries share a revision.

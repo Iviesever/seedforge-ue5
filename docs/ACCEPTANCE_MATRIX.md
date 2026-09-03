@@ -18,12 +18,11 @@
 | Pure C++ graybox | HISM actor and generated map | source + inspected screenshot | Passed |
 | Automated screenshot | bounded capture script and PNG size check | Editor and packaged PNGs | Passed |
 | Win64 candidate | BuildCookRun and packaged EXE smoke | RC1 archive/checksum/log | Passed |
-| One aggregate verification entry point | Build/Test/Smoke/BuildPlugin/Package orchestration | `Scripts/VerifyAll.ps1` | Pending final run |
+| One aggregate verification entry point | Build/Test/Smoke/BuildPlugin/Package orchestration | `Scripts/VerifyAll.ps1` + `Artifacts/Reports/verification-last.json` | Passed |
 | README and architecture | repository documents | README + `docs/ARCHITECTURE.md` | Passed |
 | Test/build evidence and limitations | evidence journal and limitation document | task evidence + `docs/KNOWN_LIMITATIONS.md` | Passed |
 | AI assistance disclosure | explicit non-authorship record | `docs/AI_ASSISTANCE.md` | Passed |
 | Code/interview learning material | walkthrough and Q&A | `docs/CODE_WALKTHROUGH.md`, `docs/INTERVIEW_GUIDE.md` | Passed |
-| Clean-revision final RC and rollback | aggregate final run and release manifest | RC2 | Pending final run |
+| Clean-revision final RC and rollback | aggregate final run and release manifest | RC2 + timestamped RC1 fallback | Passed |
 
-The matrix is not complete until every Pending row is replaced by fresh final evidence.
-
+Every row has a passing evidence path. `Scripts/FinalizeRelease.ps1` additionally refuses to assemble the final delivery unless the latest aggregate verification and packaged-demo manifest both name the current clean Git revision.
