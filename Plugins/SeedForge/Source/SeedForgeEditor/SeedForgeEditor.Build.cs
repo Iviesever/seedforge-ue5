@@ -1,17 +1,16 @@
 using UnrealBuildTool;
 
-public class SeedForgeTests : ModuleRules
+public class SeedForgeEditor : ModuleRules
 {
-    public SeedForgeTests(ReadOnlyTargetRules Target) : base(Target)
+    public SeedForgeEditor(ReadOnlyTargetRules Target) : base(Target)
     {
         PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-        PrivateDependencyModuleNames.AddRange(new[]
+        PublicDependencyModuleNames.AddRange(new[]
         {
             "Core",
             "CoreUObject",
             "Engine",
-            "SeedForgeEditor",
             "SeedForgeRuntime"
         });
     }

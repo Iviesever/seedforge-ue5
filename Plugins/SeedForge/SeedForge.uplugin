@@ -16,6 +16,11 @@
       "LoadingPhase": "Default"
     },
     {
+      "Name": "SeedForgeEditor",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    },
+    {
       "Name": "SeedForgeTests",
       "Type": "Editor",
       "LoadingPhase": "PostEngineInit"
