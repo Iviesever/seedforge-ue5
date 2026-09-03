@@ -12,7 +12,8 @@ public class SeedForgeTests : ModuleRules
             "CoreUObject",
             "Engine",
             "SeedForgeEditor",
-            "SeedForgeRuntime"
+            "SeedForgeRuntime",
+            "Slate"
         });
     }
 }
