@@ -60,8 +60,27 @@ $hash = Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
 $checksumPath = "$zipPath.sha256"
 [System.IO.File]::WriteAllText($checksumPath, "$($hash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($zipPath))`r`n")
 
+$manifest = [ordered]@{
+    createdAt = (Get-Date).ToString('o')
+    sourceRevision = (git -C $projectRoot rev-parse HEAD).Trim()
+    version = $version
+    packageDirectory = $packageDir
+    archive = $zipPath
+    sha256 = $hash.Hash.ToLowerInvariant()
+    verifiedTargets = @(
+        'UnrealEditor Win64 Development'
+        'UnrealGame Win64 Development'
+        'UnrealGame Win64 Shipping'
+    )
+}
+$manifestPath = Join-Path $pluginRoot 'last-plugin-package.json'
+[System.IO.File]::WriteAllText(
+    $manifestPath,
+    ($manifest | ConvertTo-Json -Depth 5) + "`r`n")
+
 Write-Host "SeedForge plugin package passed."
 Write-Host "Package: $packageDir"
 Write-Host "Archive: $zipPath"
 Write-Host "SHA256: $($hash.Hash.ToLowerInvariant())"
+Write-Host "Manifest: $manifestPath"
 Write-Host "Logs: $consoleLog and $uatLog"

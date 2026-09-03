@@ -112,7 +112,8 @@ $checksumPath = "$zipPath.sha256"
 
 $manifest = [ordered]@{
     createdAt = (Get-Date).ToString('o')
-    sourceRevision = (git -C $projectRoot rev-parse HEAD)
+    sourceRevision = (git -C $projectRoot rev-parse HEAD).Trim()
+    version = $version
     packageDirectory = $packageDir
     executable = $executable
     smokeLog = $smokeLog

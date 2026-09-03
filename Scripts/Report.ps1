@@ -134,10 +134,15 @@ if ([double]$benchmark.timingsMilliseconds.min -gt [double]$benchmark.timingsMil
 }
 
 $summaryPath = Join-Path $runRoot 'report-summary.json'
+$sourceRevision = (git -C $projectRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceRevision)) {
+    throw 'Could not resolve the source revision for the Phase 2 report.'
+}
 $summary = [ordered]@{
     schema = 'seedforge.phase2-report-run'
     schemaVersion = 1
     generatedAtUtc = [DateTime]::UtcNow.ToString('o')
+    sourceRevision = $sourceRevision
     leftDocument = $leftPath
     rightDocument = $rightPath
     diff = $diffPath

@@ -1,81 +1,113 @@
 # Interview guide
 
-## 1. Why is the generator deterministic?
+## Deterministic core
 
-It receives all variable input explicitly, owns a fixed SplitMix64 stream, uses bounded integer operations, sorts every output that affects hashing, and never reads time, global randomness, UObject state, or unordered-container iteration.
+### Why is generation deterministic?
 
-## 2. Why not use `FMath::Rand`?
+All variable input is explicit, the RNG algorithm and seed are fixed, work is bounded, output-affecting arrays are sorted, and the core never reads time, global randomness, UObject state, or unordered-container iteration.
 
-It is global implicit state. Test order or unrelated code can change its sequence, so it violates reproducibility and makes failures harder to replay.
+### Why not `FMath::Rand`?
 
-## 3. Why sort rooms after placement?
+It is implicit global state. Test order and unrelated callers can perturb it, making failures hard to replay.
 
-Proposal/acceptance order is an implementation detail. Canonical ordering gives stable connection order, entrance selection, tie-breaking, equality, serialization order, and hashes.
+### Why sort rooms after placement?
 
-## 4. Why does the hash include the seed?
+Proposal order is an implementation detail. Canonical order stabilizes corridor connection order, endpoint tie breaks, equality, serialization, and hashes.
 
-The hash identifies the complete generation identity, not only coincidentally identical geometry. Two seeds that happen to produce the same geometry remain distinguishable.
+### Why include the seed in the hash?
 
-## 5. Does modulo range selection introduce bias?
+The hash represents generation identity, not only coincident geometry. Two seeds remain distinguishable even if they happen to create equal shapes.
 
-Yes, `Next() % Span` has a tiny modulo bias when the 64-bit domain is not divisible by Span. It does not affect determinism or current invariants. A production statistical generator could use rejection sampling without changing the public boundary, but doing so would version golden hashes.
+### Is modulo selection statistically perfect?
 
-## 6. How is nontermination prevented?
+No. `% Span` has tiny modulo bias unless the 64-bit domain divides evenly. It does not hurt determinism. Rejection sampling would be an algorithm-version change and would require new golden hashes.
 
-Room proposal count is capped by `MaxPlacementAttempts`. Impossible layouts return `PlacementExhausted` with placed/required counts and the seed instead of retrying forever.
+### How is nontermination prevented?
 
-## 7. How is connectivity proved?
+`MaxPlacementAttempts` caps proposals. Impossible inputs return `PlacementExhausted` with placed/required counts and seed.
 
-The validator builds the canonical walkable set and runs a four-neighbor BFS from the entrance. A valid layout requires visited count to equal total walkable count, which also proves the exit is reachable after its membership check.
+### How is connectivity proved?
 
-## 8. Why is room overlap `O(R^2)` acceptable?
+The validator builds the canonical walkable set and performs four-neighbor BFS from the entrance. Validity requires every walkable cell to be visited; the exit is separately required to belong to that set.
 
-The scoped demo has ten rooms and a capped maximum. Pairwise checks are simple and auditable. A larger generator could introduce a spatial index or occupancy grid after profiling.
+## Async and UE boundaries
 
-## 9. Why use `UE::Tasks`?
+### Why `UE::Tasks`?
 
-The pure generator is independent CPU work. `UE::Tasks` moves it away from the Game Thread while the coordinator explicitly returns only the immutable-by-contract value result for application.
+Generation is pure CPU work. The coordinator moves it off the Game Thread and returns only a value result for guarded application.
 
-## 10. Is cancellation immediate?
+### Is cancellation immediate?
 
-No. Cancellation is cooperative result suppression. A monolithic generator already running may finish, but the token and request-id gates prevent scene application. True mid-loop interruption would require passing a cancellation view into the generator and defining partial-work semantics.
+No. It is cooperative result suppression. Running CPU work can finish, but cancelled or stale results cannot apply. Mid-loop interruption would require a different generator contract.
 
-## 11. How are stale requests prevented from winning?
+### How is newest-request-wins enforced?
 
-Every Start assigns a monotonically increasing id and cancels the previous token. The Game Thread callback applies only when its id still equals the active id.
+Each start assigns a monotonic id and cancels the previous token. Game Thread apply requires the id still equal the active id.
 
-## 12. Why shared state plus `TWeakObjectPtr`?
+### Why shared state and `TWeakObjectPtr`?
 
-Shared non-UObject state lets worker callbacks safely outlive the coordinator object without dereferencing freed memory. The weak UObject capture separately prevents callbacks from resurrecting or dereferencing a destroyed subsystem.
+Shared non-UObject state safely outlives coordinator callbacks; the weak UObject capture separately prevents access to a destroyed subsystem.
 
-## 13. Why not wait for workers in `Deinitialize`?
+### Why not wait in `Deinitialize`?
 
-Blocking the Game Thread could deadlock work whose completion is scheduled back to that thread and would cause teardown stalls. Shutdown invalidates state and lets task-owned values die naturally.
+Blocking the Game Thread risks deadlock or teardown stalls when completion is scheduled back to that thread. Invalidation is safe and non-blocking.
 
-## 14. Why HISM instead of one Actor per tile?
+### Why HISM instead of one Actor per cell?
 
-HISM batches repeated mesh instances and avoids hundreds of Actor/UObject lifecycles and draw submissions. Topology remains plain data, so presentation can change without touching generation.
+HISM batches repeated mesh instances and avoids hundreds of Actor/UObject lifecycles. Topology stays plain data and presentation remains replaceable.
 
-## 15. Where are unordered containers safe here?
+## Portable evidence
 
-They are used for membership in validation and boundary-wall detection. Their iteration order never chooses topology, output order, or hash bytes.
+### Why are seed and hash JSON strings?
 
-## 16. What did the tests catch?
+Many JSON consumers represent numbers as IEEE-754 doubles, which cannot exactly encode every `uint64`. Decimal strings preserve all 64 bits across languages.
 
-They caught the initial missing behavior, test-runner false-success handling, an UE `constexpr` mismatch, latent test macro syntax, missing test-module link dependencies, and standalone plugin transitive-include issues.
+### Why write canonical JSON manually?
 
-## 17. Why test a packaged executable?
+The schema is small and fixed. Explicit emission makes byte order visible and prevents reliance on unordered object-map iteration or serializer formatting changes.
 
-Editor success can hide target eligibility, module type, cooking, staged content, and runtime dependency problems. The packaged smoke proves the cooked map, Game target, plugin Runtime module, rendering, and exit path work together.
+### Why normalize before checking the hash?
 
-## 18. Why not use MQB to build this project?
+Canonical identity must describe canonical topology, not an external writer's array order. A hash matching only unsorted input is reported as non-canonical instead of silently legitimized.
 
-UnrealBuildTool owns Unreal reflection, generated headers, target rules, modules, plugins, cooking, and platform packaging. Replacing it would fight the engine's build model. MQB's evidence discipline was reused, not its executable pipeline.
+### Why ignore unknown fields but reject missing ones?
 
-## 19. What would you optimize first?
+Ignoring optional future fields supports forward-compatible metadata. Requiring every v1 field prevents silent defaults from changing identity or validation semantics.
 
-Measure proposal rejection and corridor `AddUnique`. For larger grids, use an occupancy bitmap for placement/corridor membership while keeping a final canonical sorted array. Re-run golden/versioned compatibility tests and Unreal Insights.
+### Why structural diff instead of text diff?
 
-## 20. What is the honest authorship answer?
+Text diff confuses formatting/order with topology. The two-pointer set merge reports exact room/cell additions and removals, endpoints, config, and identities with reverse symmetry.
 
-Codex wrote and verified the implementation under a user-approved specification. The user should present it as AI-assisted orchestration and only claim C++ understanding after independently studying and modifying it.
+## Benchmark and delivery
+
+### What does warm-up accomplish?
+
+It exercises code and caches before measurement without contaminating sample statistics. The warm-up count is recorded so another run can reproduce the method.
+
+### Why nearest-rank P95?
+
+It has a simple declared definition and always selects an observed sample. A known-array test fixes the convention and avoids percentile-library ambiguity.
+
+### What does aggregate hash prove?
+
+It folds every measured seed and canonical layout hash in order. It identifies outputs independently of machine-dependent elapsed times.
+
+### Why use an Editor Commandlet?
+
+It provides unattended, scriptable access to UE-linked Runtime code and explicit process exit codes without introducing file I/O into the pure codec.
+
+### Why test a packaged executable?
+
+Editor success can hide module eligibility, cooking, staged assets, and runtime dependencies. The package smoke proves the cooked map, Game target, Runtime module, rendering, screenshot, and exit path together.
+
+### How does finalization avoid stale artifacts?
+
+Verification, report, plugin, and demo manifests must all name the current clean revision and version. The finalizer copies exact manifest paths, hashes every payload, hashes its manifest, then a separate script re-reads and rehashes the set.
+
+### Why is the Inspector deliberately small?
+
+It demonstrates an Editor module, Slate, Runtime API reuse, and export workflow without turning the sprint into unrelated tooling. The algorithm still has one implementation.
+
+### What is the honest authorship answer?
+
+Codex GPT-5.6 Sol implemented and verified the repository under a user-approved scope. The user should claim orchestration and learned understanding, not independent hand-written authorship.

@@ -20,7 +20,10 @@ $requiredFiles = @(
     'docs\INTERVIEW_GUIDE.md',
     'docs\KNOWN_LIMITATIONS.md',
     'docs\FINAL_HANDOFF.md',
-    'docs\ROLLBACK.md'
+    'docs\ROLLBACK.md',
+    'docs\RELEASE_NOTES.md',
+    'docs\LAYOUT_FORMAT.md',
+    'docs\BENCHMARKING.md'
 )
 
 foreach ($relativePath in $requiredFiles) {

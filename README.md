@@ -1,80 +1,89 @@
-# SeedForge
+# SeedForge 0.2.0
 
-SeedForge is a deterministic asynchronous dungeon-generation lab for Unreal Engine 5.8. It separates a pure C++ generation/validation core from UE task scheduling and HISM scene application.
+SeedForge is a UE 5.8 C++ engineering portfolio project: a deterministic asynchronous dungeon generator whose layouts can be exported, verified, structurally compared, benchmarked, and inspected inside the Editor.
 
-![SeedForge deterministic graybox for seed 0x5EED](docs/images/seedforge-24301.png)
+![SeedForge deterministic graybox for seed 24301](docs/images/seedforge-24301.png)
 
-## What it proves
+## What it demonstrates
 
-- Explicit `Seed + Config` input with bounded deterministic generation.
-- Canonical room/corridor ordering and byte-defined FNV-1a layout hashes.
-- Bounds, overlap, entrance/exit, and full-connectivity validation.
-- Cancellation-safe `UE::Tasks` execution with newest-request-wins semantics.
-- `UWorldSubsystem` lifetime boundary and weak UObject apply callback.
-- Pure C++ HISM graybox using only the Engine cube asset.
-- Automated UE build, test, plugin packaging, Win64 cooking, packaged smoke, and screenshot capture.
+- Pure deterministic generation from explicit `uint64 Seed + Config`, with bounded work and five golden hashes.
+- Ordered validation of bounds, overlap, endpoints, and complete four-neighbor connectivity.
+- Cancellation-safe `UE::Tasks` work with newest-request-wins Game Thread application.
+- A weak `UWorldSubsystem` lifetime boundary and pure C++ HISM graybox visualization.
+- Versioned canonical JSON with exact unsigned 64-bit decimal strings, strict typed import failures, hash verification, and topology validation.
+- Deterministic Layout Diff over room and walkable-cell sets, endpoints, configuration, seed, and hash identities.
+- A headless Editor Commandlet that generates documents, diffs them, and records a reproducible 10,000-seed timing report.
+- A minimal code-native Editor Inspector with seed input, identity metrics, and canonical JSON export.
+- One verification pipeline covering Editor build/load, 41 UE Automation tests, two Editor captures, BuildPlugin, BuildCookRun, and packaged-EXE smoke.
 
-## Verified evidence
+## Evidence snapshot
 
-| Gate | Recorded result |
+| Gate | Verified result |
 |---|---:|
-| UE Automation | 25 passed, 0 warnings, 0 failures |
-| Property sweep | 10,000 deterministic seeds |
-| Golden regression | 5 fixed seed/hash pairs |
-| Synchronous repeatability | 5 seeds x 100 complete-layout comparisons |
-| Asynchronous repeatability | 100 sequential worker/apply cycles |
+| UE Automation | 41 passed, 0 warnings, 0 failures |
+| Generator property sweep | 10,000 consecutive seeds |
+| Canonical document round trip | 100 generated seeds plus `MAX_uint64` |
+| Structural diff | stable sorted topology, reverse symmetry, endpoint isolation |
+| Benchmark integration | 10,000 attempted, 10,000 succeeded, 0 failed |
 | Independent plugin build | Editor Development, Game Development, Game Shipping |
-| Win64 BuildCookRun | Build, Cook, Stage, Pak, Archive passed |
-| Packaged smoke | Hash, instance counts, PNG capture, clean exit passed |
+| Win64 candidate | Build, Cook, Stage, Pak, Archive and real EXE smoke |
 
-These are machine-specific recorded results, not universal performance claims. The evidence journal is in `tasks/20260903-113501-ue58-agentic-sprint/evidence.md` and raw artifacts are produced under the ignored `Artifacts/` directory.
+Timings are observations on one machine, never an SLA. Raw outputs live under the ignored `Artifacts/` directory; the committed evidence journals live under `tasks/`.
 
-## Run the packaged demo
+## Try it
 
-1. Extract the latest `SeedForgeDemo-Win64-*.zip` from `Artifacts/Release/`.
-2. Launch `Windows/SeedForge.exe`.
-3. Fly with <kbd>W</kbd>/<kbd>A</kbd>/<kbd>S</kbd>/<kbd>D</kbd>, mouse look, and <kbd>Space</kbd>/<kbd>Ctrl</kbd> or <kbd>E</kbd>/<kbd>Q</kbd> for vertical movement.
-
-Pass a different seed from a terminal:
+Build and run the complete test suite:
 
 ```powershell
-.\SeedForge.exe -SeedForgeSeed=2026
+.\Scripts\Build.ps1
+.\Scripts\Test.ps1 -Filter SeedForge
 ```
 
-## Local verification
+Generate two canonical layouts, import and diff them, then benchmark 10,000 seeds:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Build.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/Test.ps1 -Filter SeedForge
-powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/CaptureDemo.ps1
+.\Scripts\Report.ps1
 ```
 
-The scripts keep project caches, user state, logs, reports, packages, and screenshots under the project directory whenever UE provides an override. See [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) for every build and packaging entry point.
+Open the Editor and choose **Tools > Miscellaneous > SeedForge Inspector** (the exact menu placement can vary with the UE workspace layout). The tab starts with seed `24301`; generate another seed or export its canonical JSON. A deterministic visual-QA run is also available:
 
-## Architecture
+```powershell
+.\Scripts\CaptureInspector.ps1 -Seed 24301
+```
+
+To rebuild every deliverable from one clean revision:
+
+```powershell
+.\Scripts\VerifyAll.ps1
+.\Scripts\FinalizeRelease.ps1
+```
+
+## Runtime demo
+
+Extract `SeedForgeDemo-Win64-0.2.0-*.zip`, launch `Windows/SeedForge.exe`, and fly with W/A/S/D plus mouse look; Space/Ctrl or E/Q moves vertically. Pass `-SeedForgeSeed=<uint64>` for another layout.
+
+## Architecture at a glance
 
 ```text
 Seed + Config
-    -> FSeedForgeGenerator       pure deterministic C++
-    -> FSeedForgeLayout          canonical ordered result + hash
-    -> FSeedForgeValidator       structural invariants + connectivity
-    -> FSeedForgeAsyncCoordinator UE::Tasks worker + Game Thread apply
-    -> USeedForgeWorldSubsystem  world lifetime and broadcast boundary
-    -> ASeedForgePreviewActor    HISM floors/walls from Engine cube
+  -> FSeedForgeGenerator -> FSeedForgeLayout -> FSeedForgeValidator
+  -> FSeedForgeAsyncCoordinator -> USeedForgeWorldSubsystem
+  -> FSeedForgeVisualizationPlanner -> ASeedForgePreviewActor (HISM)
+
+FSeedForgeLayoutDocument <-> FSeedForgeLayoutCodec (canonical JSON)
+                         -> FSeedForgeLayoutDiffer (structural evidence)
+                         -> FSeedForgeBenchmarkRunner / ReportCommandlet
+                         -> SeedForge Inspector (Editor-only Slate UI)
 ```
 
-The generator never reads `UObject`, `UWorld`, wall-clock time, or global randomness. Unordered containers are used only for membership during validation/visualization, never to determine canonical output or hashes. Full design and complexity notes are in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+The generator and codec do not read `UObject`, `UWorld`, wall-clock time, global randomness, or unordered output iteration. See [Architecture](docs/ARCHITECTURE.md), [Layout format](docs/LAYOUT_FORMAT.md), and [Benchmarking](docs/BENCHMARKING.md).
 
-## Scope boundaries
+## Honest portfolio use
 
-Determinism means the same plugin version, target platform, configuration, and seed produce the same canonical layout/hash. It does not claim compatibility across future algorithm, UE, compiler, or platform versions.
+Codex GPT-5.6 Sol wrote, tested, debugged, packaged, and documented this repository under a user-approved scope. The user did not hand-write the implementation. Present it as an AI-assisted engineering project and be ready to explain or modify it live; do not claim independent authorship. See [AI assistance](docs/AI_ASSISTANCE.md), [Code walkthrough](docs/CODE_WALKTHROUGH.md), and [Interview guide](docs/INTERVIEW_GUIDE.md).
 
-SeedForge intentionally does not implement multi-floor dungeons, WFC/BSP variants, enemies, loot, NavMesh, PCG, replication, persistence, or polished art. See [`docs/KNOWN_LIMITATIONS.md`](docs/KNOWN_LIMITATIONS.md).
-
-## Authorship
-
-This repository was implemented and verified by Codex GPT-5.6 Sol under a user-approved specification. The user did not hand-write the code. It must not be represented as independently authored C++ work. See [`docs/AI_ASSISTANCE.md`](docs/AI_ASSISTANCE.md), [`docs/CODE_WALKTHROUGH.md`](docs/CODE_WALKTHROUGH.md), and [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md).
+SeedForge is intentionally an engineering lab, not a complete game or a production procedural-generation framework. See [Known limitations](docs/KNOWN_LIMITATIONS.md).
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+MIT. See [LICENSE](LICENSE).

@@ -2,42 +2,54 @@
 
 ## Recommended reading order
 
-1. `SeedForgeTypes.h` — public value types, config, errors, result contracts.
-2. `SeedForgeGenerator.cpp` — RNG, bounded placement, canonical ordering, corridors, entrance/exit, hashing.
-3. `SeedForgeValidator.cpp` — ordered structural checks and BFS connectivity.
-4. `SeedForgeAsync.h/.cpp` — cancellation token, request generations, worker/apply boundary.
-5. `SeedForgeWorldSubsystem.h/.cpp` — UObject lifetime adapter and broadcast.
-6. `SeedForgeVisualization.cpp` — canonical cells to floor/exterior-wall transforms.
-7. `SeedForgePreviewActor.cpp` — command-line input, async request, validation, HISM application, screenshot exit.
-8. `SeedForgeDemoGameMode.cpp` — runtime-created pawn/camera/lights.
-9. `SeedForge*Tests.cpp` — executable examples of every contract.
-10. `Scripts/*.ps1` — reproducible build and distribution gates.
+1. `SeedForgeTypes.h` — configuration, layout, typed generation and validation results.
+2. `SeedForgeGenerator.cpp` — SplitMix64, bounded placement, canonical sort, corridors, endpoints, FNV hash.
+3. `SeedForgeValidator.cpp` — deterministic failure order and BFS connectivity.
+4. `SeedForgeLayoutCodec.h/.cpp` — document contract, compact writer, strict parser, normalization, integrity checks.
+5. `SeedForgeLayoutDiff.h/.cpp` — sorted merge differences and summaries.
+6. `SeedForgeBenchmark.h/.cpp` — bounded methodology, timings, percentiles, aggregate identity.
+7. `SeedForgeAsync.h/.cpp` — token, request id, worker and Game Thread gates.
+8. `SeedForgeWorldSubsystem.h/.cpp` — weak UObject adapter and teardown.
+9. `SeedForgeVisualization.cpp` and `SeedForgePreviewActor.cpp` — canonical topology to HISM scene.
+10. `SeedForgeReportCommandlet.cpp` — filesystem/process boundary and three report modes.
+11. `SeedForgeEditorModule.cpp` — one Slate Inspector tab and deterministic visual capture hook.
+12. `SeedForge*Tests.cpp` and `Scripts/*.ps1` — executable contracts and distribution evidence.
 
-## End-to-end request
+## Runtime request flow
 
-1. `ASeedForgePreviewActor::BeginPlay` reads explicit arguments and calls `USeedForgeWorldSubsystem::RequestGeneration`.
-2. The subsystem constructs a value-capturing work closure and a weak-UObject apply closure.
-3. `FSeedForgeAsyncCoordinator::Start` cancels the old token, assigns an id, and launches work with `UE::Tasks`.
-4. The pure generator either returns a typed configuration/placement failure or a canonical layout.
-5. The coordinator schedules Game Thread apply and checks lifetime, cancellation, and latest id.
-6. The subsystem broadcasts; the actor validates before building transforms.
-7. HISM components receive deterministic floor/wall instances.
-8. Capture mode writes a screenshot and exits; interactive mode retains the free-fly pawn.
+1. `ASeedForgePreviewActor::BeginPlay` reads explicit command-line values and requests generation from the subsystem.
+2. The subsystem creates a value-only work closure and weak-UObject apply closure.
+3. The coordinator cancels the old token, assigns a request id, and launches `UE::Tasks` work.
+4. The generator validates configuration, executes bounded proposals, sorts outputs, and computes identity.
+5. The Game Thread callback checks shared lifetime, shutdown, cancellation, and newest id.
+6. The actor revalidates, plans deterministic transforms, and applies HISM instances.
+
+## Document and report flow
+
+1. Generate a layout and bind it to its configuration and version fields.
+2. Export sorts collections and recomputes the canonical hash before writing fixed-order UTF-8 JSON.
+3. Import checks required types and exact unsigned strings, validates config, normalizes topology, verifies hash semantics, then validates connectivity.
+4. Diff turns both documents into canonical room/walkable sets and performs a two-pointer merge.
+5. Benchmark warms the same code path, measures a consecutive range, calculates nearest-rank percentiles, and aggregates seed/hash pairs.
+6. The Commandlet owns file I/O and exits non-zero on bad arguments, documents, generation, or writes.
+7. `Report.ps1` starts independent processes and reparses every output before creating a revision-aware summary.
 
 ## Details worth tracing in a debugger
 
-- Watch `FDeterministicRandom::State` advance four times per room proposal.
-- Compare proposal order with the sorted `Layout.Rooms` order.
-- Observe corridor cells exclude cells already contained inside rooms.
-- Break on `FSeedForgeAsyncCoordinator::CancelActive` and inspect the shared token captured by a worker.
-- Start two requests and observe the first Game Thread callback fail the active-id gate.
-- Destroy/deinitialize the subsystem and observe `TWeakObjectPtr` plus shared-state gates suppress apply.
+- Watch `FDeterministicRandom::State` advance for a room proposal.
+- Compare proposal order with canonical room order and golden hash bytes.
+- Feed an unsorted external document with a sorted hash, then with its order-dependent hash.
+- Reverse a layout comparison and observe the added/removed arrays exchange.
+- Break on `CancelActive`; watch a stale worker reach but fail the active-id apply gate.
+- Change a benchmark sample count and verify timings change while the aggregate depends only on identities.
+- Open the Inspector and follow the same Runtime APIs used by the Commandlet—there is no separate editor algorithm.
 
-## Safe first personal modifications
+## Best first personal modifications
 
-- Add a test and configurable minimum Manhattan distance between entrance and exit.
-- Replace corridor `AddUnique` with a fixed-size occupancy bitmap while preserving golden hashes or intentionally versioning them.
-- Add a third HISM marker type for entrance/exit using an engine-native shape.
-- Export the canonical layout to JSON with a schema version and round-trip test.
+- Add a `--pretty`/formatted export mode outside the canonical hash representation.
+- Add a Diff metric for changed configuration fields while keeping set output stable.
+- Replace corridor `AddUnique` with a bitmap and prove all five golden hashes remain unchanged.
+- Add a minimum entrance/exit distance with a new typed config failure and versioning decision.
+- Add a CSV benchmark projection while retaining canonical JSON as authoritative evidence.
 
-Each modification should begin with a failing Automation test and end with the complete suite plus packaged smoke.
+Start with a failing Automation test, make the smallest implementation, run focused tests, then run the full suite and packaged smoke.
