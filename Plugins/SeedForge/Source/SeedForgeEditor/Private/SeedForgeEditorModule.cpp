@@ -1,9 +1,15 @@
 #include "Modules/ModuleManager.h"
 
+#include "Containers/Ticker.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformMisc.h"
 #include "HAL/PlatformTime.h"
+#include "ImageUtils.h"
+#include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "SeedForgeGenerator.h"
 #include "SeedForgeLayoutCodec.h"
@@ -20,6 +26,8 @@
 #include "WorkspaceMenuStructureModule.h"
 
 #define LOCTEXT_NAMESPACE "SeedForgeEditor"
+
+DEFINE_LOG_CATEGORY_STATIC(LogSeedForgeInspector, Log, All);
 
 namespace SeedForge::Inspector::Private
 {
@@ -53,8 +61,10 @@ namespace SeedForge::Inspector::Private
     {
     public:
         SLATE_BEGIN_ARGS(SSeedForgeInspector)
+            : _InitialSeed(24301ULL)
         {
         }
+            SLATE_ARGUMENT(uint64, InitialSeed)
         SLATE_END_ARGS()
 
         void Construct(const FArguments& Arguments)
@@ -93,7 +103,7 @@ namespace SeedForge::Inspector::Private
                     .Padding(0.0f, 5.0f, 0.0f, 14.0f)
                     [
                         SAssignNew(SeedInput, SEditableTextBox)
-                        .Text(FText::FromString(TEXT("24301")))
+                        .Text(FText::AsNumber(Arguments._InitialSeed, &FNumberFormattingOptions::DefaultNoGrouping()))
                         .HintText(LOCTEXT("SeedHint", "0 to 18446744073709551615"))
                         .OnTextCommitted(this, &SSeedForgeInspector::OnSeedCommitted)
                     ]
@@ -147,6 +157,8 @@ namespace SeedForge::Inspector::Private
                     ]
                 ]
             ];
+
+            GenerateSeed(Arguments._InitialSeed);
         }
 
     private:
@@ -165,6 +177,11 @@ namespace SeedForge::Inspector::Private
                 return FReply::Handled();
             }
 
+            return GenerateSeed(Seed);
+        }
+
+        FReply GenerateSeed(uint64 Seed)
+        {
             FSeedForgeLayoutDocument Candidate;
             const double StartSeconds = FPlatformTime::Seconds();
             FSeedForgeResult Generated = FSeedForgeGenerator::Generate(Seed, Candidate.Config);
@@ -243,10 +260,43 @@ public:
                 "InspectorTabTooltip",
                 "Inspect and export deterministic SeedForge layouts."))
             .SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsMiscCategory());
+
+        if (FParse::Value(
+                FCommandLine::Get(),
+                TEXT("SeedForgeInspectorCapture="),
+                PendingCapturePath)
+            && !PendingCapturePath.IsEmpty())
+        {
+            FString SeedText;
+            if (FParse::Value(FCommandLine::Get(), TEXT("SeedForgeInspectorSeed="), SeedText))
+            {
+                uint64 ParsedSeed = 0;
+                if (SeedForge::Inspector::Private::ParseUInt64(SeedText, ParsedSeed))
+                {
+                    CaptureSeed = ParsedSeed;
+                }
+                else
+                {
+                    UE_LOG(
+                        LogSeedForgeInspector,
+                        Error,
+                        TEXT("Invalid -SeedForgeInspectorSeed value '%s'."),
+                        *SeedText);
+                }
+            }
+            CaptureTicker = FTSTicker::GetCoreTicker().AddTicker(
+                FTickerDelegate::CreateRaw(this, &FSeedForgeEditorModule::TickInspectorCapture),
+                1.0f);
+        }
     }
 
     virtual void ShutdownModule() override
     {
+        if (CaptureTicker.IsValid())
+        {
+            FTSTicker::GetCoreTicker().RemoveTicker(CaptureTicker);
+            CaptureTicker.Reset();
+        }
         FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(
             SeedForge::Inspector::Private::TabName);
     }
@@ -254,12 +304,83 @@ public:
 private:
     TSharedRef<SDockTab> SpawnInspectorTab(const FSpawnTabArgs& Args)
     {
-        return SNew(SDockTab)
+        TSharedRef<SDockTab> Tab = SNew(SDockTab)
             .TabRole(ETabRole::NomadTab)
             [
-                SNew(SeedForge::Inspector::Private::SSeedForgeInspector)
+                SAssignNew(InspectorWidget, SeedForge::Inspector::Private::SSeedForgeInspector)
+                .InitialSeed(CaptureSeed)
             ];
+        InspectorTab = Tab;
+        return Tab;
     }
+
+    bool TickInspectorCapture(float DeltaSeconds)
+    {
+        ++CaptureAttempts;
+        if (!InspectorTab.IsValid())
+        {
+            InspectorTab = FGlobalTabmanager::Get()->TryInvokeTab(
+                SeedForge::Inspector::Private::TabName);
+            return true;
+        }
+
+        const TSharedPtr<SeedForge::Inspector::Private::SSeedForgeInspector> Widget = InspectorWidget.Pin();
+        const FVector2D LocalSize = Widget.IsValid()
+            ? Widget->GetCachedGeometry().GetLocalSize()
+            : FVector2D::ZeroVector;
+        if (!Widget.IsValid() || LocalSize.X < 200.0 || LocalSize.Y < 200.0)
+        {
+            if (CaptureAttempts < 20)
+            {
+                return true;
+            }
+            UE_LOG(LogSeedForgeInspector, Error, TEXT("Inspector never reached a capturable layout size."));
+            FPlatformMisc::RequestExit(false);
+            return false;
+        }
+
+        TArray<FColor> Pixels;
+        FIntVector ImageSize;
+        if (!FSlateApplication::Get().TakeScreenshot(Widget.ToSharedRef(), Pixels, ImageSize))
+        {
+            if (CaptureAttempts < 20)
+            {
+                return true;
+            }
+            UE_LOG(LogSeedForgeInspector, Error, TEXT("FSlateApplication could not capture the Inspector widget."));
+            FPlatformMisc::RequestExit(false);
+            return false;
+        }
+
+        const FString AbsolutePath = FPaths::ConvertRelativePathToFull(PendingCapturePath);
+        IFileManager::Get().MakeDirectory(*FPaths::GetPath(AbsolutePath), true);
+        TArray64<uint8> PngBytes;
+        FImageUtils::PNGCompressImageArray(ImageSize.X, ImageSize.Y, Pixels, PngBytes);
+        if (!FFileHelper::SaveArrayToFile(PngBytes, *AbsolutePath))
+        {
+            UE_LOG(LogSeedForgeInspector, Error, TEXT("Could not save Inspector capture '%s'."), *AbsolutePath);
+            FPlatformMisc::RequestExit(false);
+            return false;
+        }
+
+        UE_LOG(
+            LogSeedForgeInspector,
+            Display,
+            TEXT("Inspector capture passed path='%s' width=%d height=%d bytes=%lld."),
+            *AbsolutePath,
+            ImageSize.X,
+            ImageSize.Y,
+            PngBytes.Num());
+        FPlatformMisc::RequestExit(false);
+        return false;
+    }
+
+    FString PendingCapturePath;
+    uint64 CaptureSeed = 24301ULL;
+    int32 CaptureAttempts = 0;
+    FTSTicker::FDelegateHandle CaptureTicker;
+    TWeakPtr<SDockTab> InspectorTab;
+    TWeakPtr<SeedForge::Inspector::Private::SSeedForgeInspector> InspectorWidget;
 };
 
 IMPLEMENT_MODULE(FSeedForgeEditorModule, SeedForgeEditor)
