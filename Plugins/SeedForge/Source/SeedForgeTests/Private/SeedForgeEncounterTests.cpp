@@ -144,7 +144,7 @@ bool FSeedForgeEncounterRejectsImpossibleSeparationTest::RunTest(const FString& 
 {
     const FSeedForgeLayout Layout = SeedForge::EncounterTests::GenerateLayout(*this, 404);
     FSeedForgeEncounterConfig Config;
-    Config.MinPlayerEnemyDistance = 10'000;
+    Config.MinPlayerEnemyDistance = 4096;
     const FSeedForgeEncounterResult Result = FSeedForgeEncounterPlanner::Generate(Layout, Config);
 
     TestFalse(TEXT("Impossible safety radius is rejected"), Result.IsSuccess());
