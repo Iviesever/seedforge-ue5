@@ -5,7 +5,6 @@
 enum class ESeedForgeErrorCode : uint8
 {
     None,
-    NotImplemented,
     InvalidGridSize,
     InvalidRoomCount,
     InvalidRoomSizeRange,
@@ -130,4 +129,3 @@ struct SEEDFORGERUNTIME_API FSeedForgeValidationResult
         return Result;
     }
 };
-
