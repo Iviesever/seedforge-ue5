@@ -32,21 +32,19 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $packageDir = Join-Path $pluginRoot "SeedForge-$timestamp"
 $consoleLog = Join-Path $logRoot "package-plugin-$timestamp.log"
-$uatLog = Join-Path $logRoot "uat-package-plugin-$timestamp.log"
 
 $arguments = @(
     'BuildPlugin',
     "-Plugin=$pluginFile",
     "-Package=$packageDir",
     '-TargetPlatforms=Win64',
-    '-Rocket',
-    "-log=$uatLog"
+    '-Rocket'
 )
 
 & $runUat @arguments 2>&1 | Tee-Object -FilePath $consoleLog
 $exitCode = $LASTEXITCODE
 if ($exitCode -ne 0) {
-    throw "BuildPlugin failed with exit code $exitCode. See '$consoleLog' and '$uatLog'."
+    throw "BuildPlugin failed with exit code $exitCode. See '$consoleLog'."
 }
 
 $packagedDescriptor = Join-Path $packageDir 'SeedForge.uplugin'
@@ -83,4 +81,4 @@ Write-Host "Package: $packageDir"
 Write-Host "Archive: $zipPath"
 Write-Host "SHA256: $($hash.Hash.ToLowerInvariant())"
 Write-Host "Manifest: $manifestPath"
-Write-Host "Logs: $consoleLog and $uatLog"
+Write-Host "Log: $consoleLog"

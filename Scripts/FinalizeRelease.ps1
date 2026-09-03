@@ -113,9 +113,7 @@ $logPatterns = @(
     'capture-demo-*.log',
     'capture-inspector-*.log',
     'package-plugin-*.log',
-    'uat-package-plugin-*.log',
     'package-demo-*.log',
-    'uat-package-demo-*.log',
     'smoke-packaged-*.log'
 )
 foreach ($pattern in $logPatterns) {

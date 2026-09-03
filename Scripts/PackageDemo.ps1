@@ -34,7 +34,6 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $packageDir = Join-Path $packageRoot "SeedForge-Win64-$timestamp"
 $consoleLog = Join-Path $logRoot "package-demo-$timestamp.log"
-$uatLog = Join-Path $logRoot "uat-package-demo-$timestamp.log"
 $arguments = @(
     'BuildCookRun',
     "-project=$projectFile",
@@ -50,14 +49,13 @@ $arguments = @(
     "-archivedirectory=$packageDir",
     '-unattended',
     '-utf8output',
-    '-NoCodeSign',
-    "-log=$uatLog"
+    '-NoCodeSign'
 )
 
 & $runUat @arguments 2>&1 | Tee-Object -FilePath $consoleLog
 $exitCode = $LASTEXITCODE
 if ($exitCode -ne 0) {
-    throw "BuildCookRun failed with exit code $exitCode. See '$consoleLog' and '$uatLog'."
+    throw "BuildCookRun failed with exit code $exitCode. See '$consoleLog'."
 }
 
 $executable = Get-ChildItem -File -Recurse -LiteralPath $packageDir -Filter 'SeedForge.exe' |
