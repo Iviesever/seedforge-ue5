@@ -121,14 +121,14 @@ bool FSeedForgeAcceptsGeneratedLayoutTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-    FSeedForgeThousandSeedPropertyTest,
-    "SeedForge.Validation.ThousandSeedPropertySweep",
+    FSeedForgeTenThousandSeedPropertyTest,
+    "SeedForge.Validation.TenThousandSeedPropertySweep",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FSeedForgeThousandSeedPropertyTest::RunTest(const FString& Parameters)
+bool FSeedForgeTenThousandSeedPropertyTest::RunTest(const FString& Parameters)
 {
     const FSeedForgeConfig Config;
-    for (uint64 Seed = 0; Seed < 1000; ++Seed)
+    for (uint64 Seed = 0; Seed < 10000; ++Seed)
     {
         const FSeedForgeResult Generation = FSeedForgeGenerator::Generate(Seed, Config);
         if (!Generation.IsSuccess())
@@ -156,4 +156,3 @@ bool FSeedForgeThousandSeedPropertyTest::RunTest(const FString& Parameters)
 }
 
 #endif
-

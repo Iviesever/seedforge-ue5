@@ -234,3 +234,15 @@ Status: **RC1 passed** on 2026-09-03 (UTC+8). A clean-revision RC2 will be produ
   - `Artifacts/Reports/automation-20260903-132321/index.json`
 
 RC1 was produced while the packaging scripts and standalone-target include corrections were still uncommitted; its manifest therefore names prior last-known-good revision `69f0a81`. RC1 is retained as a verified fallback, while RC2 must be produced from a clean committed revision before final delivery.
+
+## Extended deterministic verification
+
+Status: **Passed** on 2026-09-03 (UTC+8).
+
+- Added explicit coverage for invalid room counts, negative padding, insufficient attempt budgets, bounded placement exhaustion, and representative seed divergence.
+- Expanded the deterministic property sweep from 1,000 to 10,000 consecutive seeds.
+- The complete suite now passes 25 tests with zero warnings/failures/not-run/in-process tests.
+- Evidence:
+  - `Artifacts/Logs/build-editor-20260903-132701.log`
+  - `Artifacts/Logs/automation-20260903-132748.log`
+  - `Artifacts/Reports/automation-20260903-132748/index.json`
