@@ -1,5 +1,6 @@
 #include "Misc/AutomationTest.h"
 #include "SeedForgeWorldSubsystem.h"
+#include "UObject/Package.h"
 #include "UObject/StrongObjectPtr.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -129,4 +130,3 @@ bool FSeedForgeSubsystemDeinitializeSuppressesLateWorkTest::RunTest(const FStrin
 }
 
 #endif
-

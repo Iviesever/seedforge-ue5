@@ -2,6 +2,7 @@
 
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/SceneComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "HAL/PlatformFileManager.h"
 #include "Misc/CommandLine.h"
@@ -202,4 +203,3 @@ void ASeedForgePreviewActor::ExitAfterCapture()
     UE_LOG(LogSeedForge, Display, TEXT("Capture window complete; requesting clean exit."));
     FGenericPlatformMisc::RequestExit(false);
 }
-

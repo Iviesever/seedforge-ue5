@@ -190,3 +190,47 @@ Status: **Passed in Editor game mode** on 2026-09-03 (UTC+8). Packaged-game veri
 - The complete suite after scene integration passed 20 tests with zero warnings/failures/not-run/in-process tests:
   - `Artifacts/Logs/automation-20260903-130918.log`
   - `Artifacts/Reports/automation-20260903-130918/index.json`
+
+## PACT-05 — Repeatable build, test, and distribution
+
+Status: **RC1 passed** on 2026-09-03 (UTC+8). A clean-revision RC2 will be produced after documentation and final verification.
+
+### Independent plugin package
+
+- Initial `BuildPlugin` exposed two standalone-target dependencies that the project Editor build had hidden:
+  - the test module was eligible for UnrealGame builds instead of being Editor-only;
+  - the runtime preview actor relied on a transitive `UStaticMesh` include.
+- The test module was constrained to `Editor`, and Runtime now includes its complete `UStaticMesh` dependency explicitly.
+- The second `RunUAT BuildPlugin` passed independent HostProject builds for:
+  - UnrealEditor Win64 Development;
+  - UnrealGame Win64 Development;
+  - UnrealGame Win64 Shipping.
+- Plugin archive: `Artifacts/Release/SeedForgePlugin-0.1.0-20260903-131805.zip` (39,760,188 bytes).
+- Plugin SHA-256: `065e75adc890221611b95754b881fc335da12950fec387a91764a269c8bf5acc`.
+- Evidence:
+  - Failed standalone dependency discovery: `Artifacts/Logs/package-plugin-20260903-131527.log`
+  - Passing package: `Artifacts/Logs/package-plugin-20260903-131805.log`
+  - UAT log: `Artifacts/Logs/uat-package-plugin-20260903-131805.log`
+
+### Win64 RC1 and packaged smoke
+
+- `BuildCookRun` completed Build, Cook, Stage, Pak, and Archive in 83.09 seconds.
+- The packaged `SeedForge.exe` launched outside the Editor, generated seed 24301, reproduced canonical hash 7425849530159566348, applied 587 floor and 436 wall instances, captured a 1,280 x 720 PNG, and requested clean exit.
+- Packaged runtime end-to-end async/apply time in this warm run: 6.855 ms.
+- Demo archive: `Artifacts/Release/SeedForgeDemo-Win64-0.1.0-20260903-132041.zip` (405,934,413 bytes).
+- Demo SHA-256: `6fdd8168de82dac4fafd98898e8a189968e87c1ccd1c2fe857a73b05fee063e1`.
+- Evidence:
+  - `Artifacts/Logs/package-demo-20260903-132041.log`
+  - `Artifacts/Logs/uat-package-demo-20260903-132041.log`
+  - `Artifacts/Logs/smoke-packaged-20260903-132041.log`
+  - `Artifacts/Media/SeedForge-Packaged-24301.png` (visually inspected)
+  - `Artifacts/Package/last-package.json`
+
+### Post-package regression
+
+- After the standalone-target dependency corrections, the complete Editor Automation suite passed 20 tests again with zero warnings/failures/not-run/in-process tests.
+- Evidence:
+  - `Artifacts/Logs/automation-20260903-132321.log`
+  - `Artifacts/Reports/automation-20260903-132321/index.json`
+
+RC1 was produced while the packaging scripts and standalone-target include corrections were still uncommitted; its manifest therefore names prior last-known-good revision `69f0a81`. RC1 is retained as a verified fallback, while RC2 must be produced from a clean committed revision before final delivery.
