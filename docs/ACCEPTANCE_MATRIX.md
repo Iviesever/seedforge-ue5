@@ -1,5 +1,7 @@
 # Acceptance matrix
 
+This table is the verified 0.2.0 matrix. See `PHASE3_ACCEPTANCE_MATRIX.md` for the 0.3.0 candidate and final exact-revision gates.
+
 | Requirement | Authoritative check | Evidence path | Status |
 |---|---|---|---|
 | Preserve verified 0.1.0 | annotated `v0.1.0` resolves to `720ba4a8...`; old final directories untouched | Phase 2 PACT-20 evidence | Passed |

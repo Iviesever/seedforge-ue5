@@ -1,9 +1,9 @@
 {
   "FileVersion": 3,
-  "Version": 2,
-  "VersionName": "0.2.0",
+  "Version": 3,
+  "VersionName": "0.3.0",
   "FriendlyName": "SeedForge",
-  "Description": "Deterministic asynchronous dungeon generation with canonical layout evidence, structural diffs, and reproducible benchmarks.",
+  "Description": "Deterministic dungeon generation, encounter planning, bounded grid A*, and a code-native extraction gameplay slice with packaged evidence.",
   "Category": "Gameplay",
   "CreatedBy": "Iviesever with Codex GPT-5.6 Sol",
   "CanContainContent": false,

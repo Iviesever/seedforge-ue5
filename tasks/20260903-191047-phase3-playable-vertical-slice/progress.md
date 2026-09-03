@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Active PACT: PACT-33 — clean-revision BuildPlugin, Win64 package, ordinary launch, and packaged smoke passed; evidence commit pending.
+- Active PACT: PACT-34 — 0.3.0 metadata/portfolio docs prepared; final clean-revision aggregate pending.
 - Branch: `feat/phase3-playable-vertical-slice`.
 - Base: `9a306f8ff72cb660d3c04b09806787df21191d45`.
-- Last committed HEAD: `9ff53d407e6525af96a92fedb35c51532a48b39c` (PACT-33 smoke implementation and exact package revision).
-- Production behavior changes: PACT-33 P0 is implemented and clean-revision packaged; only evidence/log-redirection script changes are pending commit.
+- Last committed HEAD: `249427506ba3cfae20e9a4032a5ff76bbffda534` (PACT-33 package evidence and UAT log redirection).
+- Production behavior changes: PACT-30 through PACT-33 are committed. PACT-34 candidate docs/version/screenshots are in the worktree.
 - Blockers: none.
-- Next action: commit PACT-33 package evidence and UAT project-local log redirection, then begin PACT-34 version/docs/portfolio alignment and final exact-revision aggregate verification.
+- Next action: run documentation/config/repository checks, commit PACT-34, then execute `VerifyPhase3.ps1` from the clean exact revision; push and create/update the Draft PR only if every gate remains green.
 
 ## Verified commands
 
@@ -35,6 +35,8 @@
 | `Scripts/TestGameplay.ps1 -Seed 24301 -TimeoutSeconds 180` | Editor smoke passed; JSON reparse, 3 screenshots, 0 unexpected warnings/errors | `Artifacts/Reports/Gameplay/20260903-201302/summary.json`; `Artifacts/Logs/gameplay-smoke-editor-20260903-201302.log` |
 | `Scripts/PackagePlugin.ps1` at clean `9ff53d4` | Editor Development, Game Development, Game Shipping passed | `Artifacts/Logs/package-plugin-20260903-201442.log`; `Artifacts/Plugin/last-plugin-package.json` |
 | `Scripts/PackageGameplay.ps1 -Seed 24301 -TimeoutSeconds 300` | Build/Cook/Stage/Pak/Archive, ordinary EXE, packaged smoke/JSON/3 PNG passed | `Artifacts/Package/last-gameplay-package.json`; `Artifacts/Reports/Gameplay/20260903-201808/summary.json` |
+| `Scripts/Build.ps1` after 0.3.0 metadata/docs | Passed | `Artifacts/Logs/build-editor-20260903-202947.log` |
+| `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` after 0.3.0 metadata/docs | 63 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-203021.log`; `Artifacts/Reports/automation-20260903-203021` |
 
 ## Risks
 

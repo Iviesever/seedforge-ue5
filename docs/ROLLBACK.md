@@ -2,6 +2,14 @@
 
 ## Immutable release baseline
 
+Annotated tag `v0.2.0` points exactly to:
+
+```text
+9a306f8ff72cb660d3c04b09806787df21191d45
+```
+
+It is the Phase 3 branch base and remains the preferred rollback for all 0.3.0 gameplay work. The published 0.2.0 Release is unchanged.
+
 Annotated tag `v0.1.0` points exactly to:
 
 ```text
@@ -21,6 +29,19 @@ Inspect it from a new branch or worktree. Do not destroy the current checkout wi
 - `59fc3d0` — deterministic Inspector capture and visual evidence green.
 
 Later documentation/release commits build on these checkpoints. Use `git log --oneline --decorate` and the final delivery manifest for the final revision.
+
+## Phase 3 checkpoints
+
+- `83e7672` — PACT-30 issue/blueprint/baseline.
+- `319a302` — PACT-31 deliberate RED model contracts.
+- `81a77a2` — encounter planner, bounded A*, and run state GREEN.
+- `6e8fcbd` — PACT-32 deliberate RED Gameplay Framework contracts.
+- `7f6fedd` — playable code-native World GREEN.
+- `53b10f8` — PACT-33 deliberate RED smoke trace.
+- `9ff53d4` — runtime/script gameplay smoke GREEN and clean package source revision.
+- `2494275` — packaged evidence and screenshot root-cause packet.
+
+All Phase 3 work remains on `feat/phase3-playable-vertical-slice`. Revert a focused commit or return to `v0.2.0`; do not reset the user's checkout destructively.
 
 ## Artifact fallback
 

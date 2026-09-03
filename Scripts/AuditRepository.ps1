@@ -23,7 +23,18 @@ $requiredFiles = @(
     'docs\ROLLBACK.md',
     'docs\RELEASE_NOTES.md',
     'docs\LAYOUT_FORMAT.md',
-    'docs\BENCHMARKING.md'
+    'docs\BENCHMARKING.md',
+    'docs\PHASE3_ARCHITECTURE.md',
+    'docs\GAMEPLAY_LOOP.md',
+    'docs\PHASE3_CODE_WALKTHROUGH.md',
+    'docs\PHASE3_INTERVIEW_GUIDE.md',
+    'docs\LIVE_CHANGE_DRILLS.md',
+    'docs\PHASE3_ACCEPTANCE_MATRIX.md',
+    'docs\PHASE3_EVIDENCE_JOURNAL.md',
+    'docs\PHASE3_CANDIDATE_RELEASE_NOTES.md',
+    'docs\images\phase3-start-24301.png',
+    'docs\images\phase3-combat-24301.png',
+    'docs\images\phase3-win-24301.png'
 )
 
 foreach ($relativePath in $requiredFiles) {

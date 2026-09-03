@@ -2,7 +2,7 @@
   "FileVersion": 3,
   "EngineAssociation": "5.8",
   "Category": "Games",
-  "Description": "Deterministic asynchronous dungeon generation lab for Unreal Engine 5.8.",
+  "Description": "Deterministic procedural dungeon extraction vertical slice for Unreal Engine 5.8.",
   "Modules": [
     {
       "Name": "SeedForgeDemo",

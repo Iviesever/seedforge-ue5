@@ -1,43 +1,53 @@
-# Final handoff
+# Phase 3 candidate handoff
 
-## Delivery location
+## Status boundary
 
-After a clean `VerifyAll.ps1`, run `FinalizeRelease.ps1`. The selected delivery directory is written to:
+SeedForge 0.3.0 is a feature-branch/Draft PR candidate. The Goal authorizes commit, push, and Draft PR, but not merge to `main`, a `v0.3.0` tag, or a formal GitHub Release.
 
-```text
-Artifacts/Final/LATEST.txt
-```
+## Authoritative local evidence
 
-The 0.2.0 delivery contains:
-
-- source ZIP produced by `git archive` from the verified revision;
-- independent plugin ZIP and SHA-256;
-- packaged Win64 demo ZIP and SHA-256;
-- 41-test UE Automation JSON/HTML report;
-- two canonical documents, structural diff, 10k benchmark, per-command logs, and revision-aware report summary;
-- build, smoke, capture, package, and packaged-run logs;
-- Editor runtime, packaged runtime, and Inspector PNG evidence;
-- architecture, schema, benchmark, limitations, acceptance, AI disclosure, walkthrough, interview, rollback, and release documents;
-- Phase 1 and Phase 2 issue/plan/evidence journals;
-- `DELIVERY_MANIFEST.json` for every payload and an adjacent manifest SHA-256.
-
-The finalizer refuses to assemble if verification, report, plugin manifest, demo manifest, version, or Git revision disagree. It finishes by invoking `AuditDelivery.ps1` to re-enumerate and rehash the delivery independently.
-
-## Re-audit
+After the final documentation commit, run from a clean worktree:
 
 ```powershell
-$delivery = (Get-Content .\Artifacts\Final\LATEST.txt).Trim()
-.\Scripts\AuditDelivery.ps1 -DeliveryRoot $delivery
+.\Scripts\VerifyPhase3.ps1
 ```
 
-## Run the demo
+Use these files as sources of truth:
 
-Extract `SeedForgeDemo-Win64-0.2.0-*.zip`, launch `Windows/SeedForge.exe`, and use W/A/S/D plus mouse look; Space/Ctrl or E/Q moves vertically. Use `-SeedForgeSeed=<uint64>` for another layout.
+- `Artifacts/Reports/phase3-verification-last.json` — exact revision, version, test counts, and aggregate gates.
+- `Artifacts/Plugin/last-plugin-package.json` — three-target plugin package and SHA-256.
+- `Artifacts/Package/last-gameplay-package.json` — BuildCookRun output, ordinary packaged launch, packaged gameplay smoke, archive, hashes, trace, and screenshots.
+- latest `Artifacts/Reports/Gameplay/*/summary.json` — independently reparsed gameplay trace and strict log audit.
+- latest `Artifacts/Reports/Phase2/*/report-summary.json` — preserved canonical document/diff/benchmark chain.
 
-## Use the plugin
+All must name the same clean revision for the final Draft PR body.
 
-Extract `SeedForgePlugin-0.2.0-*.zip` to a UE 5.8 project's `Plugins/SeedForge` directory and rebuild. Runtime APIs live in `SeedForgeRuntime`; Commandlet and Inspector features are Editor-only.
+## Run the candidate
 
-## Interview warning
+Extract `SeedForgeDemo-Win64-0.3.0-*.zip` and launch:
 
-Do not present the repository as independently hand-written C++. Read `AI_ASSISTANCE.md`, reproduce the evidence, explain the architecture without notes, and complete a personally authored test-first change before claiming technical ownership.
+```text
+Windows/SeedForge.exe
+```
+
+Controls: WASD move, mouse aim, Left Mouse Button attack, Space dash, R restart same seed, N new seed. Pass `-SeedForgeSeed=<uint64>` for a chosen deterministic map/initial encounter.
+
+## Reproduce gameplay evidence
+
+```powershell
+.\Scripts\TestGameplay.ps1 -Seed 24301
+.\Scripts\PackageGameplay.ps1 -Seed 24301
+```
+
+The second command performs one BuildCookRun, verifies the ordinary non-smoke packaged path, then drives the packaged production gameplay loop through attack, kill, three Cores, unlock, and win.
+
+## Rollback
+
+- Immutable 0.2.0 baseline/tag/release: `9a306f8ff72cb660d3c04b09806787df21191d45` / `v0.2.0`.
+- Phase 3 branch: `feat/phase3-playable-vertical-slice`.
+- PACT checkpoints and recovery guidance: `docs/ROLLBACK.md`.
+- Do not use destructive reset on the user's checkout; revert focused commits or branch from the immutable tag.
+
+## Portfolio warning
+
+Do not present the repository as independently hand-written C++. Read `AI_ASSISTANCE.md`, reproduce the evidence, explain the architecture without notes, and complete a personally authored test-first live-change drill before claiming technical ownership.

@@ -1,5 +1,17 @@
 # Release notes
 
+## SeedForge 0.3.0 candidate
+
+- Deterministic initial encounter plan and independent encounter hash.
+- Pure bounded four-neighbor A* and explicit run state machine.
+- Code-native top-down Player/Controller/Enemy/Core/Exit/HUD and complete fight/collect/extract loop.
+- Same-seed restart, deterministic next seed, CLI seed, HP/death, attack/dash cooldowns, and bounded enemy replans.
+- Editor and packaged production-path gameplay smoke with exact JSON, strict log audit, and start/combat/win captures.
+- 22 new Automation tests, bringing the complete suite to 63 while preserving all original 41 tests and five layout hashes.
+- Phase 3 architecture, walkthrough, interview guide, live drills, acceptance, evidence, and AI disclosure.
+
+This is branch/Draft PR candidate metadata. No `v0.3.0` tag or formal Release has been created.
+
 ## SeedForge 0.2.0
 
 ### Added
