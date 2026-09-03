@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Active PACT: PACT-30 — baseline and technical blueprint.
+- Active PACT: PACT-31 — pure deterministic gameplay model, RED complete.
 - Branch: `feat/phase3-playable-vertical-slice`.
-- Base and current HEAD: `9a306f8ff72cb660d3c04b09806787df21191d45`.
-- Base relation: 0 ahead / 0 behind `origin/main` when the branch was created.
-- Production code changes: none.
+- Base: `9a306f8ff72cb660d3c04b09806787df21191d45`.
+- Last committed HEAD: `83e76727ea19e1683d8111b48de05ccb610076b9`.
+- Production behavior changes: none; PACT-31 currently contains only API contracts and deliberate RED stubs.
 - Blockers: none.
-- Next action: commit the PACT-30 contract/blueprint evidence, then begin PACT-31 by adding deliberate RED pure C++ tests and explicit stubs.
+- Next action: commit the PACT-31 RED contract, implement the smallest GREEN encounter planner, pathfinder, and run-state behavior, then run focused and full regression.
 
 ## Verified commands
 
@@ -18,6 +18,8 @@
 | `Scripts/AuditRepository.ps1 -RequireClean` | Passed; 99 tracked files, 43 source/build-rule files | terminal transcript |
 | `Scripts/Build.ps1` | Passed; UE 5.8 Editor Development target up to date | `Artifacts/Logs/build-editor-20260903-191006.log` |
 | `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` | 41 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-191012.log`; `Artifacts/Reports/automation-20260903-191012` |
+| `Scripts/Build.ps1` after PACT-31 contracts | Passed; 11 compile/link actions | `Artifacts/Logs/build-editor-20260903-191851.log` |
+| `Scripts/Test.ps1 -Filter SeedForge.Model -TimeoutSeconds 900` | Authoritative RED: 0 passed, 15 failed for missing behavior | `Artifacts/Logs/automation-20260903-192030.log`; `Artifacts/Reports/automation-20260903-192030` |
 
 ## Risks
 
