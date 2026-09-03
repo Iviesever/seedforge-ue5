@@ -1,9 +1,9 @@
 {
   "FileVersion": 3,
-  "Version": 1,
-  "VersionName": "0.1.0",
+  "Version": 2,
+  "VersionName": "0.2.0",
   "FriendlyName": "SeedForge",
-  "Description": "Deterministic asynchronous dungeon generation with automated invariant validation.",
+  "Description": "Deterministic asynchronous dungeon generation with canonical layout evidence, structural diffs, and reproducible benchmarks.",
   "Category": "Gameplay",
   "CreatedBy": "Iviesever with Codex GPT-5.6 Sol",
   "CanContainContent": false,

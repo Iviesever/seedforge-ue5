@@ -24,6 +24,10 @@ if (-not (Test-Path -LiteralPath $runUat)) {
 if (-not (Test-Path -LiteralPath $pluginFile)) {
     throw "SeedForge.uplugin was not found at '$pluginFile'."
 }
+$version = (Get-Content -Raw -LiteralPath $pluginFile | ConvertFrom-Json).VersionName
+if ([string]::IsNullOrWhiteSpace($version)) {
+    throw "SeedForge.uplugin has no VersionName."
+}
 
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $packageDir = Join-Path $pluginRoot "SeedForge-$timestamp"
@@ -50,7 +54,7 @@ if (-not (Test-Path -LiteralPath $packagedDescriptor)) {
     throw "BuildPlugin succeeded without the expected descriptor '$packagedDescriptor'."
 }
 
-$zipPath = Join-Path $releaseRoot "SeedForgePlugin-0.1.0-$timestamp.zip"
+$zipPath = Join-Path $releaseRoot "SeedForgePlugin-$version-$timestamp.zip"
 Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $zipPath -CompressionLevel Optimal
 $hash = Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
 $checksumPath = "$zipPath.sha256"

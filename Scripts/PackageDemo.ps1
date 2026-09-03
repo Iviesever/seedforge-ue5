@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot 'SeedForge.uproject'
+$pluginFile = Join-Path $projectRoot 'Plugins\SeedForge\SeedForge.uplugin'
 $runUat = Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat'
 $artifactRoot = Join-Path $projectRoot 'Artifacts'
 $logRoot = Join-Path $artifactRoot 'Logs'
@@ -24,6 +25,10 @@ Set-Item -Path 'Env:UE-LocalDataCachePath' -Value $cacheRoot
 
 if (-not (Test-Path -LiteralPath $runUat)) {
     throw "RunUAT.bat was not found at '$runUat'."
+}
+$version = (Get-Content -Raw -LiteralPath $pluginFile | ConvertFrom-Json).VersionName
+if ([string]::IsNullOrWhiteSpace($version)) {
+    throw "SeedForge.uplugin has no VersionName."
 }
 
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -99,7 +104,7 @@ if ((Get-Item -LiteralPath $smokeCapture).Length -lt 10KB) {
     throw "Packaged demo screenshot is unexpectedly small: '$smokeCapture'."
 }
 
-$zipPath = Join-Path $releaseRoot "SeedForgeDemo-Win64-0.1.0-$timestamp.zip"
+$zipPath = Join-Path $releaseRoot "SeedForgeDemo-Win64-$version-$timestamp.zip"
 Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $zipPath -CompressionLevel Optimal
 $hash = Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
 $checksumPath = "$zipPath.sha256"
