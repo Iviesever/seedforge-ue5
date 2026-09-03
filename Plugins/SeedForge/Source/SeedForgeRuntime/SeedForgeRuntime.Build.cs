@@ -12,5 +12,7 @@ public class SeedForgeRuntime : ModuleRules
             "CoreUObject",
             "Engine"
         });
+
+        PrivateDependencyModuleNames.Add("Json");
     }
 }

@@ -186,6 +186,19 @@ bool FSeedForgeDocumentSpecificErrorsTest::RunTest(const FString& Parameters)
             FString::Printf(TEXT("\"canonicalHash\":\"%llu\""), Document.Layout.CanonicalHash),
             TEXT("\"canonicalHash\":\"0\"")),
         ESeedForgeDocumentErrorCode::HashMismatch);
+    ExpectError(
+        TEXT("Maximum uint64 hash boundary"),
+        SeedForge::Tests::ReplaceRequired(
+            *this,
+            Valid,
+            FString::Printf(TEXT("\"canonicalHash\":\"%llu\""), Document.Layout.CanonicalHash),
+            TEXT("\"canonicalHash\":\"18446744073709551615\"")),
+        ESeedForgeDocumentErrorCode::HashMismatch);
+
+    const FString WithUnknownField = TEXT("{\"futureField\":true,") + Valid.Mid(1);
+    TestTrue(
+        TEXT("Unknown fields are ignored for forward-compatible readers"),
+        FSeedForgeLayoutCodec::ImportCanonicalJson(WithUnknownField).IsSuccess());
 
     FSeedForgeLayoutDocument InvalidConfig = Document;
     InvalidConfig.Config.GridWidth = 0;

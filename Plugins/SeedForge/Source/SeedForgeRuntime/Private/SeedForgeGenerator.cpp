@@ -131,7 +131,7 @@ namespace SeedForge::Private
         }
     }
 
-    FSeedForgeResult ValidateConfig(const FSeedForgeConfig& Config)
+    FSeedForgeResult ValidateGenerationConfig(const FSeedForgeConfig& Config)
     {
         if (Config.GridWidth < MinGridDimension
             || Config.GridHeight < MinGridDimension
@@ -229,6 +229,11 @@ namespace SeedForge::Private
     }
 }
 
+FSeedForgeResult FSeedForgeGenerator::ValidateConfig(const FSeedForgeConfig& Config)
+{
+    return SeedForge::Private::ValidateGenerationConfig(Config);
+}
+
 TArray<FIntPoint> FSeedForgeLayout::GetCanonicalWalkableCells() const
 {
     TArray<FIntPoint> Cells;
@@ -260,7 +265,7 @@ TArray<FIntPoint> FSeedForgeLayout::GetCanonicalWalkableCells() const
 
 FSeedForgeResult FSeedForgeGenerator::Generate(uint64 Seed, const FSeedForgeConfig& Config)
 {
-    const FSeedForgeResult ConfigResult = SeedForge::Private::ValidateConfig(Config);
+    const FSeedForgeResult ConfigResult = ValidateConfig(Config);
     if (!ConfigResult.IsSuccess())
     {
         return ConfigResult;
