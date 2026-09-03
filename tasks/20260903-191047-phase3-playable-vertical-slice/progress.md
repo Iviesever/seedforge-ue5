@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Active PACT: PACT-32 — UE gameplay vertical slice, GREEN verified and pending its implementation commit.
+- Active PACT: PACT-33 — automated gameplay smoke and packaging, RED complete.
 - Branch: `feat/phase3-playable-vertical-slice`.
 - Base: `9a306f8ff72cb660d3c04b09806787df21191d45`.
-- Last committed HEAD: `6e8fcbdbda3f07e8c7f3936ffa29dba3366f1ead` (PACT-32 RED contract).
-- Production behavior changes: the code-native top-down Gameplay Framework is implemented and verified in the worktree; PACT-33 smoke/packaging proof is not yet implemented.
+- Last committed HEAD: `7f6feddfdf86f40165ac6818948c57a4ae7af488` (PACT-32 GREEN).
+- Production behavior changes: PACT-32 is committed; PACT-33 currently contains only the trace schema contract and deliberate serializer stub.
 - Blockers: none.
-- Next action: commit PACT-32 GREEN, record its exact commit in the next checkpoint, then begin PACT-33 with failing automated gameplay trace/smoke contracts.
+- Next action: commit the PACT-33 RED trace contract, implement canonical trace JSON plus the production-path Editor smoke driver/scripts, then prove Collect/attack/unlock/Won before Win64 packaging.
 
 ## Verified commands
 
@@ -29,6 +29,7 @@
 | `Scripts/CaptureDemo.ps1 -Seed 24301` | Exit 0; 1280x720 gameplay HUD screenshot, 388,156 bytes | `Artifacts/Logs/capture-demo-20260903-194855.log`; `Artifacts/Media/SeedForge-24301.png` |
 | `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` after PACT-32 | 61 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-194950.log`; `Artifacts/Reports/automation-20260903-194950` |
 | `Scripts/PackagePlugin.ps1` after PACT-32 | Editor Development, Game Development, Game Shipping passed | `Artifacts/Logs/package-plugin-20260903-195024.log` |
+| `Scripts/Test.ps1 -Filter SeedForge.GameplaySmoke -TimeoutSeconds 900` | Authoritative PACT-33 RED: 0 passed, 2 failed for empty trace serialization | `Artifacts/Logs/automation-20260903-195635.log`; `Artifacts/Reports/automation-20260903-195635` |
 
 ## Risks
 
