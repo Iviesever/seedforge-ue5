@@ -1,0 +1,30 @@
+# Unreal generated state
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+.vs/
+.idea/
+*.sln
+*.VC.db
+*.VC.opendb
+
+# Plugin generated state
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+
+# Local isolated worktrees and caches
+.worktrees/
+.cache/
+.user/
+
+# Reproducible delivery outputs (kept locally, not committed)
+Artifacts/
+
+# Platform noise
+Thumbs.db
+Desktop.ini
+*.tmp
+*.log
+
