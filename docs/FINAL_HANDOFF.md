@@ -49,4 +49,3 @@ From a clean checkout with UE 5.8 installed:
 ```
 
 Do not use the project as evidence of independently hand-written C++ work. Read `AI_ASSISTANCE.md` and complete a personally authored, test-first change before presenting technical ownership.
-

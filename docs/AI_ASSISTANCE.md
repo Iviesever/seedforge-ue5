@@ -26,4 +26,3 @@ Before using SeedForge in a C++ interview, the user should be able to:
 3. Re-derive the room placement, canonical sorting, hashing, and BFS invariants.
 4. Explain cancellation versus interruption and the weak UObject boundary.
 5. Make and test at least one personally authored change after the AI delivery.
-

@@ -15,4 +15,3 @@ Copy the packaged `SeedForge` directory into a project's `Plugins/` directory, e
 - `ASeedForgePreviewActor` — engine-cube HISM visualization and optional screenshot capture.
 
 The plugin intentionally exposes no Blueprint API in version 0.1.0. See the repository README and `docs/` directory for the architecture, evidence, limitations, and AI-authorship disclosure.
-

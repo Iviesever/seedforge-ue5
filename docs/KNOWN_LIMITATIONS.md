@@ -12,4 +12,3 @@
 - The subsystem teardown test directly exercises `Deinitialize` on a strongly held transient instance; packaged smoke separately proves real world-subsystem operation. A future suite could add full synthetic-world destruction.
 - The Win64 archive does not include an installer or a separately validated UE prerequisite redistributable.
 - UAT and UBT may still write their own global diagnostic traces under the user's Unreal directories even when project-facing logs/cache paths are redirected.
-

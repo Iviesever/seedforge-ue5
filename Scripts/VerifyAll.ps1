@@ -70,4 +70,3 @@ $summaryPath = Join-Path $reportRoot 'verification-last.json'
 
 Write-Host "All SeedForge verification gates passed for revision $revision."
 Write-Host "Summary: $summaryPath"
-

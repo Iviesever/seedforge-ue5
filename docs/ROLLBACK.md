@@ -17,4 +17,3 @@ Use a new branch or worktree when inspecting an earlier revision. Do not destroy
 RC1 is retained under `Artifacts/Release/` with adjacent `.sha256` files. `Artifacts/Package/last-package.json` records the executable, screenshot, log, archive, and hash used for its packaged smoke.
 
 RC2 must never replace RC1 in place; scripts create timestamped directories and archives. If final verification fails, deliver the newest independently verified candidate and document the newer failure rather than overwriting the good artifact.
-

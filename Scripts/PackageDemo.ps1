@@ -126,4 +126,3 @@ Write-Host "Screenshot: $smokeCapture"
 Write-Host "Archive: $zipPath"
 Write-Host "SHA256: $($hash.Hash.ToLowerInvariant())"
 Write-Host "Manifest: $manifestPath"
-

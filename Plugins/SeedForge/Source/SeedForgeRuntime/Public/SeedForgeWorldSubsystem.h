@@ -29,4 +29,3 @@ private:
     TUniquePtr<FSeedForgeAsyncCoordinator> Coordinator;
     FSeedForgeGenerationApplied GenerationApplied;
 };
-

@@ -30,4 +30,3 @@
 4. Run focused tests after each contract and full Build/Test/Package gates at milestones.
 5. Freeze features before the final release candidate.
 6. Deliver source, packaged artifacts, verification evidence, known limitations, rollback information, and an interview study guide.
-

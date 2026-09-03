@@ -13,4 +13,3 @@ public:
     ASeedForgeDemoGameMode();
     virtual void StartPlay() override;
 };
-

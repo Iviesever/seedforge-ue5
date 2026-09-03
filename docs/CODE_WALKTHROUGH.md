@@ -41,4 +41,3 @@
 - Export the canonical layout to JSON with a schema version and round-trip test.
 
 Each modification should begin with a failing Automation test and end with the complete suite plus packaged smoke.
-

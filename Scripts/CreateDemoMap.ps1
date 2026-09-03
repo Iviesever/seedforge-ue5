@@ -51,4 +51,3 @@ if (-not (Test-Path -LiteralPath $mapFile)) {
 }
 
 Write-Host "Demo map generated. Map: $mapFile Log: $logPath"
-

@@ -15,4 +15,3 @@
 ## Boundaries
 
 This is a narrow engineering lab, not a complete procedural game. Review `KNOWN_LIMITATIONS.md` and `AI_ASSISTANCE.md` before evaluating or presenting the project.
-

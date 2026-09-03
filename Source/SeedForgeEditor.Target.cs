@@ -11,4 +11,3 @@ public class SeedForgeEditorTarget : TargetRules
         ExtraModuleNames.Add("SeedForgeDemo");
     }
 }
-

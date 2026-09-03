@@ -64,4 +64,3 @@ if ((Get-Item -LiteralPath $capturePath).Length -lt 10KB) {
 }
 
 Write-Host "Demo capture passed. Screenshot: $capturePath Log: $logPath"
-

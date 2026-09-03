@@ -84,4 +84,3 @@ Not guaranteed:
 - another UE/compiler/platform integer or serialization model;
 - identical scene render pixels across GPUs/drivers;
 - cancellation at a precise instruction inside the pure generator.
-

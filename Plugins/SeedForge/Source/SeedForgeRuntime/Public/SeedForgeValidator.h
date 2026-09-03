@@ -8,4 +8,3 @@ class SEEDFORGERUNTIME_API FSeedForgeValidator
 public:
     static FSeedForgeValidationResult Validate(const FSeedForgeLayout& Layout, const FSeedForgeConfig& Config);
 };
-

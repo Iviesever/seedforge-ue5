@@ -53,4 +53,3 @@ UnrealEditor can exit with process status 0 even when Automation cases fail. `Sc
 ## Build concurrency
 
 Only one UBT/UAT/UnrealEditor/Cook/Package writer should target the integration checkout at once. This machine has 16 GB RAM; competing UE processes would reduce reliability without improving throughput.
-

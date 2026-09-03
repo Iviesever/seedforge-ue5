@@ -79,4 +79,3 @@ Measure proposal rejection and corridor `AddUnique`. For larger grids, use an oc
 ## 20. What is the honest authorship answer?
 
 Codex wrote and verified the implementation under a user-approved specification. The user should present it as AI-assisted orchestration and only claim C++ understanding after independently studying and modifying it.
-

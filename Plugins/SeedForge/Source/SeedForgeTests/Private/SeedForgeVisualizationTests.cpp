@@ -48,4 +48,3 @@ bool FSeedForgeAdjacentCellVisualizationTest::RunTest(const FString& Parameters)
 }
 
 #endif
-

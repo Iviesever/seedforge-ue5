@@ -20,4 +20,3 @@ public:
         float WallHeight,
         float WallThickness);
 };
-

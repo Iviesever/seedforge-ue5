@@ -152,4 +152,3 @@ The demo game module owns bootstrapping and command-line configuration. The plug
 - `Artifacts/Package/`
 - `Artifacts/Release/`
 - `docs/ACCEPTANCE_MATRIX.md`
-
