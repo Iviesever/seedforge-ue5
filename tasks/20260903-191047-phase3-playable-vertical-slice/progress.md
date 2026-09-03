@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Active PACT: PACT-34 — 0.3.0 metadata/portfolio docs prepared; final clean-revision aggregate pending.
+- Active PACT: PACT-34 — first aggregate functionally green but rejected for Cook commandlet log-path escape; project-local UAT correction pending commit/reverification.
 - Branch: `feat/phase3-playable-vertical-slice`.
 - Base: `9a306f8ff72cb660d3c04b09806787df21191d45`.
-- Last committed HEAD: `249427506ba3cfae20e9a4032a5ff76bbffda534` (PACT-33 package evidence and UAT log redirection).
-- Production behavior changes: PACT-30 through PACT-33 are committed. PACT-34 candidate docs/version/screenshots are in the worktree.
+- Last committed HEAD: `96f88cb3ddceb7f264873361a174ed695438b994` (PACT-34 candidate docs/version/screenshots).
+- Production behavior changes: PACT-30 through PACT-34 are committed; only complete project-local UAT diagnostic redirection is in the worktree.
 - Blockers: none.
-- Next action: run documentation/config/repository checks, commit PACT-34, then execute `VerifyPhase3.ps1` from the clean exact revision; push and create/update the Draft PR only if every gate remains green.
+- Next action: commit the `uebp_EngineSavedFolder` correction, then rerun `VerifyPhase3.ps1` from the new clean exact revision and inspect every manifest/path before push/PR.
 
 ## Verified commands
 

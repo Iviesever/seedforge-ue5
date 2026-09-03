@@ -33,9 +33,11 @@ $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $packageDir = Join-Path $pluginRoot "SeedForge-$timestamp"
 $consoleLog = Join-Path $logRoot "package-plugin-$timestamp.log"
 $uatDiagnosticRoot = Join-Path $logRoot "uat-plugin-$timestamp"
-New-Item -ItemType Directory -Force -Path $uatDiagnosticRoot | Out-Null
+$uatEngineSavedRoot = Join-Path $uatDiagnosticRoot 'EngineSaved'
+New-Item -ItemType Directory -Force -Path $uatDiagnosticRoot, $uatEngineSavedRoot | Out-Null
 Set-Item -Path 'Env:uebp_LogFolder' -Value $uatDiagnosticRoot
 Set-Item -Path 'Env:uebp_FinalLogFolder' -Value $uatDiagnosticRoot
+Set-Item -Path 'Env:uebp_EngineSavedFolder' -Value $uatEngineSavedRoot
 
 $arguments = @(
     'BuildPlugin',

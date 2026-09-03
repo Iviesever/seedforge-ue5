@@ -92,4 +92,4 @@ UnrealEditor may return process exit 0 even when Automation cases fail. `Test.ps
 
 Report commands use separate Unreal processes and reparse every JSON output. Benchmark timings are recorded, never thresholded. Only one UBT/UAT/Editor/Cook/package writer may target this checkout at once.
 
-Package scripts redirect AutomationTool diagnostics with `uebp_LogFolder` and `uebp_FinalLogFolder` into unique project-local `Artifacts/Logs/uat-*` directories. UBT/UE may still write unavoidable user-level diagnostics under Unreal user directories; no Engine source/config is modified.
+Package scripts redirect AutomationTool diagnostics with `uebp_LogFolder`, `uebp_FinalLogFolder`, and the commandlet-local `uebp_EngineSavedFolder` into unique project-local `Artifacts/Logs/uat-*` directories. UBT/UE may still write unavoidable user-level diagnostics under Unreal user directories; no Engine source/config is modified.

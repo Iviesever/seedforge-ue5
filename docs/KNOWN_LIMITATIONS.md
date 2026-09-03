@@ -18,6 +18,6 @@
 - Cancellation suppresses stale results but does not interrupt generation inside its placement loop.
 - Corridor `TArray::AddUnique` and the strict layout codec retain their documented 0.2.0 scalability/security limits.
 - Benchmark timings remain machine observations, never cross-machine SLAs.
-- UBT/UAT/UE can write unavoidable diagnostics under Unreal user directories. Project package scripts redirect AutomationTool log folders under `Artifacts/Logs`; Engine source/config is never modified.
+- UBT/UAT/UE can write unavoidable diagnostics under Unreal user directories. Project package scripts redirect AutomationTool log/final/commandlet-saved folders under `Artifacts/Logs`; Engine source/config is never modified.
 - Win64 archives have no installer and do not separately validate a UE prerequisite redistributable.
 - AI-generated implementation must be disclosed and does not substitute for the user's personal C++/UE practice.

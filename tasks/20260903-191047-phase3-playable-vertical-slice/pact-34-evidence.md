@@ -25,3 +25,9 @@
 After this documentation/version commit, `Scripts/VerifyPhase3.ps1` must run from a clean worktree without further source/doc edits. Its authoritative report is `Artifacts/Reports/phase3-verification-last.json`; the same revision/version must appear in `Artifacts/Plugin/last-plugin-package.json`, `Artifacts/Package/last-gameplay-package.json`, the packaged gameplay trace/summary, and the preserved Phase 2 report summary.
 
 The final Draft PR body quotes those machine-readable files for the exact HEAD, Automation counts, BuildPlugin, BuildCookRun, ordinary launch, packaged smoke, screenshots, limits, and AI disclosure. Git status must remain clean after verification, push, and PR creation.
+
+## Rejected pre-final aggregate
+
+An aggregate at `96f88cb3ddceb7f264873361a174ed695438b994` passed every functional gate, including 63 tests, both gameplay smokes, BuildPlugin, and BuildCookRun. It is not accepted as final because installed-build AutomationTool chose Engine `Programs/AutomationTool/Saved` for the Cook commandlet's temporary `-abslog` even though UAT/UBT logs used the project-local `uebp_LogFolder`.
+
+Local UE 5.8 source shows `StartRunCommandlet` derives that path from the separate `uebp_EngineSavedFolder`. Both package scripts now set LogFolder, FinalLogFolder, and EngineSavedFolder to the same unique project-local UAT evidence root. A fresh clean-revision aggregate after this correction is the only final authority.
