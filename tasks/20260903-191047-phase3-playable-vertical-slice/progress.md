@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Active PACT: PACT-32 — UE gameplay vertical slice, RED complete.
+- Active PACT: PACT-32 — UE gameplay vertical slice, GREEN verified and pending its implementation commit.
 - Branch: `feat/phase3-playable-vertical-slice`.
 - Base: `9a306f8ff72cb660d3c04b09806787df21191d45`.
-- Last committed HEAD: `81a77a2fbcd0bc10068118f5fe29037c177a8e40` (PACT-31 GREEN).
-- Production behavior changes: PACT-31 is committed; PACT-32 currently contains only Gameplay Framework contracts and deliberate RED stubs.
+- Last committed HEAD: `6e8fcbdbda3f07e8c7f3936ffa29dba3366f1ead` (PACT-32 RED contract).
+- Production behavior changes: the code-native top-down Gameplay Framework is implemented and verified in the worktree; PACT-33 smoke/packaging proof is not yet implemented.
 - Blockers: none.
-- Next action: commit the PACT-32 RED contract, implement the code-native gameplay actors/coordinator/input/HUD using the existing WorldSubsystem and visualization, then run focused and real Editor gameplay verification.
+- Next action: commit PACT-32 GREEN, record its exact commit in the next checkpoint, then begin PACT-33 with failing automated gameplay trace/smoke contracts.
 
 ## Verified commands
 
@@ -24,6 +24,11 @@
 | `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` after PACT-31 GREEN | 56 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-193010.log`; `Artifacts/Reports/automation-20260903-193010` |
 | `Scripts/AuditRepository.ps1` after PACT-31 GREEN | Passed; 113 tracked files, 52 source/build-rule files | terminal transcript |
 | `Scripts/Test.ps1 -Filter SeedForge.Gameplay -TimeoutSeconds 900` | Authoritative PACT-32 RED: 0 passed, 4 failed for missing behavior | `Artifacts/Logs/automation-20260903-193656.log`; `Artifacts/Reports/automation-20260903-193656` |
+| `Scripts/Test.ps1 -Filter SeedForge.Gameplay -TimeoutSeconds 900` after GREEN | 5 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-194835.log`; `Artifacts/Reports/automation-20260903-194835` |
+| Normal Editor gameplay launch | Reached 1 player, 3 Cores, 5 enemies, 1 exit without smoke mode | `Artifacts/Logs/gameplay-normal-editor-20260903-194701.log` |
+| `Scripts/CaptureDemo.ps1 -Seed 24301` | Exit 0; 1280x720 gameplay HUD screenshot, 388,156 bytes | `Artifacts/Logs/capture-demo-20260903-194855.log`; `Artifacts/Media/SeedForge-24301.png` |
+| `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` after PACT-32 | 61 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-194950.log`; `Artifacts/Reports/automation-20260903-194950` |
+| `Scripts/PackagePlugin.ps1` after PACT-32 | Editor Development, Game Development, Game Shipping passed | `Artifacts/Logs/package-plugin-20260903-195024.log` |
 
 ## Risks
 

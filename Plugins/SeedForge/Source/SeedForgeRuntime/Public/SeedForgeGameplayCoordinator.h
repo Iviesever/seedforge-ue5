@@ -45,6 +45,8 @@ private:
     void TickInteractions();
     void ReplanEnemies();
     void EnterTerminalState();
+    void CaptureScreenshot();
+    void ExitAfterCapture();
     ASeedForgePlayerCharacter* ResolvePlayer();
 
     FSeedForgeGameplayTuning Tuning;
@@ -62,6 +64,9 @@ private:
     FDelegateHandle GenerationAppliedHandle;
     FTimerHandle InteractionTimer;
     FTimerHandle RepathTimer;
+    FTimerHandle CaptureTimer;
+    FTimerHandle CaptureExitTimer;
+    FString CapturePath;
 
     UPROPERTY()
     TObjectPtr<ASeedForgePreviewActor> Visualization;
