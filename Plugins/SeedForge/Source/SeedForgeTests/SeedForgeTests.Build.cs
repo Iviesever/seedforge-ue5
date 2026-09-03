@@ -9,8 +9,9 @@ public class SeedForgeTests : ModuleRules
         PrivateDependencyModuleNames.AddRange(new[]
         {
             "Core",
+            "CoreUObject",
+            "Engine",
             "SeedForgeRuntime"
         });
     }
 }
-

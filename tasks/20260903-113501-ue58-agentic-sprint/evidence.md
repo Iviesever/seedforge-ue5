@@ -108,3 +108,48 @@ The canonical implementation was characterized once through UE Automation, then 
   - `Artifacts/Logs/automation-20260903-124130.log`
   - `Artifacts/Reports/automation-20260903-124130/index.json`
 - Five golden seeds each reproduced the entire canonical layout 100 times synchronously.
+
+## PACT-03 — Asynchronous lifecycle safety
+
+Status: **Passed** on 2026-09-03 (UTC+8).
+
+### Coordinator RED and GREEN
+
+- Five initial coordinator tests covered worker/game-thread separation, in-flight cancellation, stale-result suppression, immediate cancellation, and shutdown suppression.
+- With the request-id-only stub, Automation reported `succeeded=2`, `failed=3`; completion, in-flight cancellation observation, and newest-result application correctly failed.
+- RED evidence:
+  - `Artifacts/Logs/automation-20260903-124725.log`
+  - `Artifacts/Reports/automation-20260903-124725/index.json`
+- Implemented `FSeedForgeAsyncCoordinator` with `UE::Tasks::Launch`, atomic cancellation, monotonic request ids, shared lifetime state, and a Game Thread apply boundary.
+- GREEN evidence:
+  - `Artifacts/Logs/automation-20260903-124937.log`
+  - `Artifacts/Reports/automation-20260903-124937/index.json`
+
+### World subsystem RED and GREEN
+
+- Added integration tests for successful `USeedForgeWorldSubsystem` forwarding and `Deinitialize` suppression.
+- The subsystem stub produced `succeeded=1`, `failed=1`; the success path correctly failed on request id zero and timed out without a callback.
+- RED evidence:
+  - `Artifacts/Logs/automation-20260903-125308.log`
+  - `Artifacts/Reports/automation-20260903-125308/index.json`
+- The subsystem now lazily owns the coordinator, captures itself weakly at the apply boundary, clears delegates, shuts down outstanding work, and destroys the coordinator during deinitialization.
+- GREEN evidence:
+  - `Artifacts/Logs/automation-20260903-125440.log`
+  - `Artifacts/Reports/automation-20260903-125440/index.json`
+
+### Required asynchronous repetition
+
+- `SeedForge.Async.HundredSequentialRepetitions` launches 100 distinct `UE::Tasks` requests serially.
+- Every result returns to the Game Thread and compares its complete canonical layout with the synchronous `0x5EED` baseline.
+- The final async suite passed 8 tests; the complete SeedForge suite passed 18 tests with zero warnings/failures/not-run/in-process tests.
+- Evidence:
+  - `Artifacts/Logs/automation-20260903-125625.log`
+  - `Artifacts/Reports/automation-20260903-125625/index.json`
+  - `Artifacts/Logs/automation-20260903-125706.log`
+  - `Artifacts/Reports/automation-20260903-125706/index.json`
+
+### Compile diagnostics resolved before GREEN
+
+- Latent Automation command declarations initially lacked the semicolon required by UE's macro expansion; only test syntax was changed.
+- Direct UObject use in `SeedForgeTests` initially exposed missing `CoreUObject` and `Engine` module dependencies at link time; only the test module manifest was corrected.
+- The production runtime module linked successfully throughout those test-harness corrections.
