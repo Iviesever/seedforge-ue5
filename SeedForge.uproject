@@ -1,0 +1,20 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.8",
+  "Category": "Games",
+  "Description": "Deterministic asynchronous dungeon generation lab for Unreal Engine 5.8.",
+  "Modules": [
+    {
+      "Name": "SeedForgeDemo",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    {
+      "Name": "SeedForge",
+      "Enabled": true
+    }
+  ]
+}
+
