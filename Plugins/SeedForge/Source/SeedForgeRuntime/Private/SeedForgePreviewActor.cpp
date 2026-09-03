@@ -47,6 +47,11 @@ void ASeedForgePreviewActor::BeginPlay()
 {
     Super::BeginPlay();
 
+    if (!bAutoGenerateOnBeginPlay)
+    {
+        return;
+    }
+
     uint64 Seed = 0x5EEDULL;
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeSeed="), Seed);
 
@@ -180,6 +185,15 @@ int32 ASeedForgePreviewActor::GetFloorInstanceCount() const
 int32 ASeedForgePreviewActor::GetWallInstanceCount() const
 {
     return WallInstances->GetInstanceCount();
+}
+
+void ASeedForgePreviewActor::SetAutoGenerateOnBeginPlay(bool bEnabled)
+{
+}
+
+bool ASeedForgePreviewActor::IsAutoGenerateOnBeginPlay() const
+{
+    return true;
 }
 
 void ASeedForgePreviewActor::CaptureScreenshot()

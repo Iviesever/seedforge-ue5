@@ -19,6 +19,8 @@ public:
     void ApplyLayout(const FSeedForgeLayout& Layout);
     int32 GetFloorInstanceCount() const;
     int32 GetWallInstanceCount() const;
+    void SetAutoGenerateOnBeginPlay(bool bEnabled);
+    bool IsAutoGenerateOnBeginPlay() const;
 
 protected:
     virtual void BeginPlay() override;
@@ -55,4 +57,5 @@ private:
     FString CapturePath;
     FTimerHandle CaptureTimer;
     FTimerHandle ExitTimer;
+    bool bAutoGenerateOnBeginPlay = true;
 };
