@@ -11,7 +11,10 @@ public class SeedForgeEditor : ModuleRules
             "Core",
             "CoreUObject",
             "Engine",
-            "SeedForgeRuntime"
+            "SeedForgeRuntime",
+            "Slate",
+            "SlateCore",
+            "WorkspaceMenuStructure"
         });
     }
 }
