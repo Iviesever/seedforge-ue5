@@ -65,5 +65,73 @@ bool FSeedForgeSameSeedDeterministicTest::RunTest(const FString& Parameters)
     return true;
 }
 
-#endif
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FSeedForgeGoldenHashesStableTest,
+    "SeedForge.Validation.GoldenHashesStable",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+bool FSeedForgeGoldenHashesStableTest::RunTest(const FString& Parameters)
+{
+    struct FGoldenCase
+    {
+        uint64 Seed;
+        uint64 ExpectedHash;
+    };
+
+    const FSeedForgeConfig Config;
+    const FGoldenCase Cases[] = {
+        {0ULL, 3488165859926780287ULL},
+        {1ULL, 8479853380352986717ULL},
+        {0x5EEDULL, 7425849530159566348ULL},
+        {0xC0FFEEULL, 7770407528328499089ULL},
+        {MAX_uint64, 5108722159798011553ULL}};
+    for (const FGoldenCase& Golden : Cases)
+    {
+        const FSeedForgeResult Result = FSeedForgeGenerator::Generate(Golden.Seed, Config);
+        TestTrue(FString::Printf(TEXT("Seed %llu generates"), Golden.Seed), Result.IsSuccess());
+        if (Result.IsSuccess())
+        {
+            TestEqual(
+                FString::Printf(TEXT("Seed %llu retains its canonical hash"), Golden.Seed),
+                Result.Layout.CanonicalHash,
+                Golden.ExpectedHash);
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+    FSeedForgeHundredSynchronousRepetitionsTest,
+    "SeedForge.Validation.HundredSynchronousRepetitions",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSeedForgeHundredSynchronousRepetitionsTest::RunTest(const FString& Parameters)
+{
+    const FSeedForgeConfig Config;
+    const uint64 Seeds[] = {0ULL, 1ULL, 0x5EEDULL, 0xC0FFEEULL, MAX_uint64};
+    for (const uint64 Seed : Seeds)
+    {
+        const FSeedForgeResult Baseline = FSeedForgeGenerator::Generate(Seed, Config);
+        TestTrue(FString::Printf(TEXT("Baseline seed %llu generates"), Seed), Baseline.IsSuccess());
+        if (!Baseline.IsSuccess())
+        {
+            continue;
+        }
+
+        for (int32 Repetition = 0; Repetition < 100; ++Repetition)
+        {
+            const FSeedForgeResult Current = FSeedForgeGenerator::Generate(Seed, Config);
+            if (!Current.IsSuccess() || !(Current.Layout == Baseline.Layout))
+            {
+                AddError(FString::Printf(
+                    TEXT("Seed %llu diverged at synchronous repetition %d."),
+                    Seed,
+                    Repetition));
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+#endif

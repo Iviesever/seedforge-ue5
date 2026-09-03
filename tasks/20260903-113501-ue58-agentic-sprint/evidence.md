@@ -67,3 +67,44 @@ Status: **Initial behavior passed** on 2026-09-03 (UTC+8). Further boundary/prop
   - `Artifacts/Logs/automation-20260903-123318.log`
   - `Artifacts/Reports/automation-20260903-123318/index.json`
 
+## PACT-02 — Topology validation and property verification
+
+Status: **Passed** on 2026-09-03 (UTC+8).
+
+### RED
+
+- Added five validator tests for out-of-bounds rooms, overlapping rooms, disconnected walkable space, acceptance of generated layouts, and a deterministic 1,000-seed property sweep.
+- Against the validator stub, Automation discovered all five and reported `failed=5`.
+- Evidence:
+  - `Artifacts/Logs/automation-20260903-123547.log`
+  - `Artifacts/Reports/automation-20260903-123547/index.json`
+
+### GREEN
+
+- Implemented ordered validation for room count, room bounds, pairwise room overlap, corridor bounds, entrance/exit membership, and four-neighbor connectivity.
+- The first compile exposed that UE 5.8's `FIntPoint` constructor is not `constexpr`; changing only the local direction array from `constexpr` to `const` resolved the documented compiler error.
+- The five validator tests then passed, including all 1,000 deterministic seeds.
+- Evidence:
+  - Compile failure: `Artifacts/Logs/build-editor-20260903-123706.log`
+  - Corrected build: `Artifacts/Logs/build-editor-20260903-123742.log`
+  - Passing validation: `Artifacts/Logs/automation-20260903-123807.log`
+  - Passing report: `Artifacts/Reports/automation-20260903-123807/index.json`
+
+### Golden hashes and repeatability
+
+The canonical implementation was characterized once through UE Automation, then the resulting values were locked into regression tests:
+
+| Seed | Canonical hash |
+|---:|---:|
+| 0 | 3488165859926780287 |
+| 1 | 8479853380352986717 |
+| 24301 (`0x5EED`) | 7425849530159566348 |
+| 12648430 (`0xC0FFEE`) | 7770407528328499089 |
+| 18446744073709551615 | 5108722159798011553 |
+
+- Characterization evidence: `Artifacts/Logs/automation-20260903-123941.log`
+- Final aggregate verification: Automation passed 10 tests, with zero warnings/failures/not-run/in-process tests.
+- Aggregate evidence:
+  - `Artifacts/Logs/automation-20260903-124130.log`
+  - `Artifacts/Reports/automation-20260903-124130/index.json`
+- Five golden seeds each reproduced the entire canonical layout 100 times synchronously.
