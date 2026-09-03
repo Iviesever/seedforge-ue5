@@ -34,6 +34,10 @@ if ([string]::IsNullOrWhiteSpace($version)) {
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $packageDir = Join-Path $packageRoot "SeedForge-Win64-$timestamp"
 $consoleLog = Join-Path $logRoot "package-demo-$timestamp.log"
+$uatDiagnosticRoot = Join-Path $logRoot "uat-demo-$timestamp"
+New-Item -ItemType Directory -Force -Path $uatDiagnosticRoot | Out-Null
+Set-Item -Path 'Env:uebp_LogFolder' -Value $uatDiagnosticRoot
+Set-Item -Path 'Env:uebp_FinalLogFolder' -Value $uatDiagnosticRoot
 $arguments = @(
     'BuildCookRun',
     "-project=$projectFile",

@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Active PACT: PACT-33 — Editor smoke GREEN; clean-revision Win64 packaging pending.
+- Active PACT: PACT-33 — clean-revision BuildPlugin, Win64 package, ordinary launch, and packaged smoke passed; evidence commit pending.
 - Branch: `feat/phase3-playable-vertical-slice`.
 - Base: `9a306f8ff72cb660d3c04b09806787df21191d45`.
-- Last committed HEAD: `53b10f8353b53b3e46a6e7d595371968dfde119b` (PACT-33 RED contract).
-- Production behavior changes: canonical trace, runtime smoke, Editor smoke/capture validation, packaged wrapper, and Phase 3 aggregate script are implemented and Editor-verified in the worktree.
+- Last committed HEAD: `9ff53d407e6525af96a92fedb35c51532a48b39c` (PACT-33 smoke implementation and exact package revision).
+- Production behavior changes: PACT-33 P0 is implemented and clean-revision packaged; only evidence/log-redirection script changes are pending commit.
 - Blockers: none.
-- Next action: commit the Editor-verified PACT-33 implementation, then run clean-revision BuildPlugin and `PackageGameplay.ps1` for ordinary packaged launch plus packaged gameplay smoke.
+- Next action: commit PACT-33 package evidence and UAT project-local log redirection, then begin PACT-34 version/docs/portfolio alignment and final exact-revision aggregate verification.
 
 ## Verified commands
 
@@ -33,6 +33,8 @@
 | `Scripts/Test.ps1 -Filter SeedForge.GameplaySmoke -TimeoutSeconds 900` after GREEN | 2 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-201150.log`; `Artifacts/Reports/automation-20260903-201150` |
 | `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` after smoke integration | 63 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-201213.log`; `Artifacts/Reports/automation-20260903-201213` |
 | `Scripts/TestGameplay.ps1 -Seed 24301 -TimeoutSeconds 180` | Editor smoke passed; JSON reparse, 3 screenshots, 0 unexpected warnings/errors | `Artifacts/Reports/Gameplay/20260903-201302/summary.json`; `Artifacts/Logs/gameplay-smoke-editor-20260903-201302.log` |
+| `Scripts/PackagePlugin.ps1` at clean `9ff53d4` | Editor Development, Game Development, Game Shipping passed | `Artifacts/Logs/package-plugin-20260903-201442.log`; `Artifacts/Plugin/last-plugin-package.json` |
+| `Scripts/PackageGameplay.ps1 -Seed 24301 -TimeoutSeconds 300` | Build/Cook/Stage/Pak/Archive, ordinary EXE, packaged smoke/JSON/3 PNG passed | `Artifacts/Package/last-gameplay-package.json`; `Artifacts/Reports/Gameplay/20260903-201808/summary.json` |
 
 ## Risks
 

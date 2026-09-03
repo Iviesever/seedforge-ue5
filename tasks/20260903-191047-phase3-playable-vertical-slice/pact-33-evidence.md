@@ -50,3 +50,29 @@ No trace serialization, runtime smoke state driver, JSON output, packaged gamepl
 - All four new PowerShell scripts parse successfully.
 
 The runtime/scripts implementation is committed before authoritative BuildPlugin/BuildCookRun so binary manifests can name the exact source revision rather than a dirty-tree parent. Package evidence follows below after that clean checkpoint.
+
+## Clean-revision BuildPlugin and Win64 package
+
+- Smoke implementation commit and clean package revision: `9ff53d407e6525af96a92fedb35c51532a48b39c`.
+- Independent BuildPlugin passed UnrealEditor Win64 Development, UnrealGame Win64 Development, and UnrealGame Win64 Shipping.
+- BuildPlugin log: `Artifacts/Logs/package-plugin-20260903-201442.log`.
+- Plugin archive: `Artifacts/Release/SeedForgePlugin-0.2.0-20260903-201442.zip`.
+- Plugin SHA-256: `ef6c351fea863ac38d0403f89d5fa64108fe63860fcc8704bff790fd60d01c4e`.
+- BuildCookRun passed Build, Cook, Stage, Pak, and Archive; AutomationTool reported success and Cook reported 0 errors / 0 warnings.
+- BuildCookRun log: `Artifacts/Logs/package-demo-20260903-201635.log`.
+- Win64 package directory: `Artifacts/Package/SeedForge-Win64-20260903-201635`.
+- Demo archive: `Artifacts/Release/SeedForgeDemo-Win64-0.2.0-20260903-201635.zip`.
+- Demo SHA-256: `88753b793f6f848b2ccdf760836a319b6c1a6aef8cfa81b03a451ef0b849d057`.
+
+## Ordinary and smoke packaged execution
+
+- The existing non-smoke `-SeedForgeCapturePath` packaged path reached gameplay ready, captured `Artifacts/Media/SeedForge-Packaged-24301.png` (400,267 bytes), and exited zero.
+- Packaged gameplay smoke exited zero, reparsed its JSON, and reported 0 unexpected warnings and 0 error/fatal markers. Four exact engine/machine warnings were allowed and remain counted.
+- Packaged trace/summary: `Artifacts/Reports/Gameplay/20260903-201808/gameplay-smoke.json`; `Artifacts/Reports/Gameplay/20260903-201808/summary.json`.
+- Packaged smoke log: `Artifacts/Logs/gameplay-smoke-packaged-20260903-201808.log`.
+- Packaged trace exactly matches revision `9ff53d407e6525af96a92fedb35c51532a48b39c`, seed `24301`, layout hash `7425849530159566348`, encounter hash `15303214708604970503`, actors `1/3/5/1`, states `Generating -> Playing -> Won`, and the seven required attack/kill/collect/unlock/exit actions.
+- Packaged start/combat/win PNGs exist and exceed 400 KiB each under `Artifacts/Media/Gameplay/20260903-201808`.
+- Manual packaged visual QA: start and win frames have complete HUD and world presentation. Combat shows the production enemy/player/attack pulse, but its HUD left edge is clipped. After two timing/camera corrections, further guessing stopped and `root-cause-20260903-packaged-combat-capture.md` records the non-blocking P1 limitation and a render-owned future repair.
+- Authoritative manifest: `Artifacts/Package/last-gameplay-package.json`.
+
+UAT's initial run selected its installed-engine AutomationTool `Saved` directory for internal diagnostic files despite all project-facing outputs being under SeedForge. No Engine file was edited, removed, or committed manually. `PackagePlugin.ps1` and `PackageDemo.ps1` now set `uebp_LogFolder` and `uebp_FinalLogFolder` to unique project-local `Artifacts/Logs/uat-*` directories; the final PACT-34 verification will prove this redirection.
