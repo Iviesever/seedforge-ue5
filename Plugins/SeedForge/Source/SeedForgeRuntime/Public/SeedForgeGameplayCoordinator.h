@@ -5,6 +5,7 @@
 #include "SeedForgeAsync.h"
 #include "SeedForgeEncounter.h"
 #include "SeedForgeGameplayTypes.h"
+#include "SeedForgeGameplaySmoke.h"
 #include "SeedForgeRunState.h"
 #include "SeedForgeGameplayCoordinator.generated.h"
 
@@ -47,7 +48,31 @@ private:
     void EnterTerminalState();
     void CaptureScreenshot();
     void ExitAfterCapture();
+    void StartGameplaySmoke();
+    void AdvanceGameplaySmoke();
+    void GameplaySmokeWatchdog();
+    void RequestSmokeScreenshot(const TCHAR* Label);
+    bool IsPendingSmokeScreenshotReady() const;
+    void CompleteGameplaySmoke();
+    void FailGameplaySmoke(const TCHAR* FailureCode, const FString& FailureMessage);
+    bool WriteGameplaySmokeTrace();
     ASeedForgePlayerCharacter* ResolvePlayer();
+
+    enum class EGameplaySmokeStage : uint8
+    {
+        Disabled,
+        Warmup,
+        WaitingStartCapture,
+        PrepareCombat,
+        Attack,
+        WaitingCombatCapture,
+        FinishCombat,
+        CollectCores,
+        ReachExit,
+        WaitingWinCapture,
+        Complete,
+        Failed
+    };
 
     FSeedForgeGameplayTuning Tuning;
     FSeedForgeConfig GenerationConfig;
@@ -67,6 +92,17 @@ private:
     FTimerHandle CaptureTimer;
     FTimerHandle CaptureExitTimer;
     FString CapturePath;
+    bool bGameplaySmokeMode = false;
+    EGameplaySmokeStage GameplaySmokeStage = EGameplaySmokeStage::Disabled;
+    int32 GameplaySmokeCoreIndex = 0;
+    double GameplaySmokeStageDeadline = 0.0;
+    FString GameplaySmokeTracePath;
+    FString GameplaySmokeCaptureDirectory;
+    FString GameplaySmokeGitSha;
+    FString PendingSmokeScreenshotPath;
+    FSeedForgeGameplaySmokeTrace GameplaySmokeTrace;
+    FTimerHandle GameplaySmokeTimer;
+    FTimerHandle GameplaySmokeWatchdogTimer;
 
     UPROPERTY()
     TObjectPtr<ASeedForgePreviewActor> Visualization;

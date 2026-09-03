@@ -4,6 +4,8 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformFileManager.h"
 #include "Misc/CommandLine.h"
+#include "Misc/EngineVersion.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "SeedForgeGameplayActors.h"
@@ -21,7 +23,7 @@ namespace SeedForge::GameplayCoordinator::Private
     constexpr float EnemyHeight = 58.0f;
     constexpr float CoreHeight = 52.0f;
     constexpr float ExitHeight = 92.0f;
-    constexpr float EnemyMaxHealth = 50.0f;
+    constexpr float EnemyMaxHealth = 100.0f;
     constexpr float PlayerAttackDamage = 50.0f;
 
     FActorSpawnParameters SpawnParameters(AActor* Owner)
@@ -253,7 +255,11 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
         Layout.CanonicalHash,
         Visualization->GetFloorInstanceCount(),
         Visualization->GetWallInstanceCount());
-    if (!CapturePath.IsEmpty())
+    if (bGameplaySmokeMode)
+    {
+        StartGameplaySmoke();
+    }
+    else if (!CapturePath.IsEmpty())
     {
         GetWorldTimerManager().SetTimer(
             CaptureTimer,
@@ -297,7 +303,7 @@ bool ASeedForgeGameplayCoordinator::TryPlayerAttack(
     TArray<ASeedForgeEnemyPawn*> CandidateActors;
     for (ASeedForgeEnemyPawn* Enemy : EnemyActors)
     {
-        if (IsValid(Enemy))
+        if (IsValid(Enemy) && !Enemy->IsActorBeingDestroyed())
         {
             const float* Health = EnemyHealth.Find(Enemy->GetStableId());
             Candidates.Add({Enemy->GetStableId(), Enemy->GetActorLocation(), Health && *Health > 0.0f});
@@ -324,6 +330,14 @@ bool ASeedForgeGameplayCoordinator::TryPlayerAttack(
         if (Health <= 0.0f)
         {
             Enemy->Destroy();
+            for (TObjectPtr<ASeedForgeEnemyPawn>& TrackedEnemy : EnemyActors)
+            {
+                if (TrackedEnemy == Enemy)
+                {
+                    TrackedEnemy = nullptr;
+                    break;
+                }
+            }
         }
     }
     return true;
@@ -396,7 +410,7 @@ int32 ASeedForgeGameplayCoordinator::GetLiveEnemyActorCount() const
     int32 Count = 0;
     for (const ASeedForgeEnemyPawn* Enemy : EnemyActors)
     {
-        Count += IsValid(Enemy) ? 1 : 0;
+        Count += IsValid(Enemy) && !Enemy->IsActorBeingDestroyed() ? 1 : 0;
     }
     return Count;
 }
@@ -419,6 +433,20 @@ void ASeedForgeGameplayCoordinator::BeginPlay()
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGridHeight="), GenerationConfig.GridHeight);
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeRoomCount="), GenerationConfig.RoomCount);
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeCapturePath="), CapturePath);
+    bGameplaySmokeMode = FParse::Param(FCommandLine::Get(), TEXT("SeedForgeGameplaySmoke"));
+    FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGameplayTrace="), GameplaySmokeTracePath);
+    FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGameplayCaptureDir="), GameplaySmokeCaptureDirectory);
+    FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGitSha="), GameplaySmokeGitSha);
+    if (bGameplaySmokeMode
+        && (GameplaySmokeTracePath.IsEmpty()
+            || GameplaySmokeCaptureDirectory.IsEmpty()
+            || GameplaySmokeGitSha.IsEmpty()))
+    {
+        FailGameplaySmoke(
+            TEXT("InvalidArguments"),
+            TEXT("Smoke requires SeedForgeGameplayTrace, SeedForgeGameplayCaptureDir, and SeedForgeGitSha."));
+        return;
+    }
     StartRun(Seed);
 }
 
@@ -466,6 +494,8 @@ void ASeedForgeGameplayCoordinator::ClearRunObjects()
         World->GetTimerManager().ClearTimer(RepathTimer);
         World->GetTimerManager().ClearTimer(CaptureTimer);
         World->GetTimerManager().ClearTimer(CaptureExitTimer);
+        World->GetTimerManager().ClearTimer(GameplaySmokeTimer);
+        World->GetTimerManager().ClearTimer(GameplaySmokeWatchdogTimer);
     }
     for (ASeedForgeCorePickup* Core : CoreActors)
     {
@@ -564,6 +594,7 @@ void ASeedForgeGameplayCoordinator::TickInteractions()
         for (ASeedForgeEnemyPawn* Enemy : EnemyActors)
         {
             if (IsValid(Enemy)
+                && !Enemy->IsActorBeingDestroyed()
                 && FVector::DistSquared2D(PlayerLocation, Enemy->GetActorLocation())
                     <= FMath::Square(Tuning.EnemyContactDistance))
             {
@@ -594,7 +625,7 @@ void ASeedForgeGameplayCoordinator::ReplanEnemies()
 
     for (ASeedForgeEnemyPawn* Enemy : EnemyActors)
     {
-        if (!IsValid(Enemy))
+        if (!IsValid(Enemy) || Enemy->IsActorBeingDestroyed())
         {
             continue;
         }
@@ -645,7 +676,7 @@ void ASeedForgeGameplayCoordinator::EnterTerminalState()
     GetWorldTimerManager().ClearTimer(InteractionTimer);
     for (ASeedForgeEnemyPawn* Enemy : EnemyActors)
     {
-        if (IsValid(Enemy))
+        if (IsValid(Enemy) && !Enemy->IsActorBeingDestroyed())
         {
             Enemy->ClearPath();
         }
@@ -671,6 +702,427 @@ void ASeedForgeGameplayCoordinator::ExitAfterCapture()
 {
     UE_LOG(LogSeedForge, Display, TEXT("Gameplay capture complete; requesting clean exit."));
     FGenericPlatformMisc::RequestExit(false);
+}
+
+void ASeedForgeGameplayCoordinator::StartGameplaySmoke()
+{
+    GameplaySmokeTrace = {};
+    GameplaySmokeTrace.GitSha = GameplaySmokeGitSha;
+    GameplaySmokeTrace.EngineVersion = FEngineVersion::Current().ToString();
+    GameplaySmokeTrace.Seed = Seed;
+    GameplaySmokeTrace.LayoutHash = Layout.CanonicalHash;
+    GameplaySmokeTrace.EncounterHash = EncounterPlan.CanonicalHash;
+    GameplaySmokeTrace.ActorCounts = {
+        IsValid(Player) ? 1 : 0,
+        GetLiveCoreActorCount(),
+        GetLiveEnemyActorCount(),
+        IsValid(ExitActor) ? 1 : 0};
+    GameplaySmokeTrace.StateTransitions = {TEXT("Generating"), TEXT("Playing")};
+
+    const FSeedForgeEncounterResult Validation = FSeedForgeEncounterPlanner::Validate(
+        EncounterPlan,
+        Layout,
+        EncounterConfig);
+    if (!Validation.IsSuccess())
+    {
+        FailGameplaySmoke(TEXT("InvalidEncounter"), Validation.ErrorMessage);
+        return;
+    }
+    if (GameplaySmokeTrace.ActorCounts.Players != 1
+        || GameplaySmokeTrace.ActorCounts.DataCores != EncounterConfig.DataCoreCount
+        || GameplaySmokeTrace.ActorCounts.Enemies != EncounterConfig.EnemyCount
+        || GameplaySmokeTrace.ActorCounts.Exits != 1)
+    {
+        FailGameplaySmoke(
+            TEXT("ActorCountMismatch"),
+            FString::Printf(
+                TEXT("Expected 1/%d/%d/1 player/core/enemy/exit actors, found %d/%d/%d/%d."),
+                EncounterConfig.DataCoreCount,
+                EncounterConfig.EnemyCount,
+                GameplaySmokeTrace.ActorCounts.Players,
+                GameplaySmokeTrace.ActorCounts.DataCores,
+                GameplaySmokeTrace.ActorCounts.Enemies,
+                GameplaySmokeTrace.ActorCounts.Exits));
+        return;
+    }
+
+    FIntPoint PlayerCell;
+    const TArray<FIntPoint> WalkableCells = Layout.GetCanonicalWalkableCells();
+    if (!FSeedForgeGameplayMath::WorldToNearestWalkableCell(
+            Player->GetActorLocation(), WalkableCells, Tuning.CellSize, PlayerCell)
+        || PlayerCell != EncounterPlan.Player.Cell
+        || ExitActor->GetSpawnCell() != EncounterPlan.Exit.Cell)
+    {
+        FailGameplaySmoke(TEXT("ActorPositionMismatch"), TEXT("Player or exit does not match the encounter plan."));
+        return;
+    }
+    for (int32 Index = 0; Index < CoreActors.Num(); ++Index)
+    {
+        const ASeedForgeCorePickup* Core = CoreActors[Index];
+        if (!IsValid(Core)
+            || !EncounterPlan.DataCores.IsValidIndex(Index)
+            || Core->GetStableId() != EncounterPlan.DataCores[Index].StableId
+            || Core->GetSpawnCell() != EncounterPlan.DataCores[Index].Cell)
+        {
+            FailGameplaySmoke(TEXT("ActorPositionMismatch"), TEXT("A Data Core does not match the encounter plan."));
+            return;
+        }
+    }
+    for (int32 Index = 0; Index < EnemyActors.Num(); ++Index)
+    {
+        const ASeedForgeEnemyPawn* Enemy = EnemyActors[Index];
+        if (!IsValid(Enemy)
+            || !EncounterPlan.Enemies.IsValidIndex(Index)
+            || Enemy->GetStableId() != EncounterPlan.Enemies[Index].StableId
+            || Enemy->GetSpawnCell() != EncounterPlan.Enemies[Index].Cell)
+        {
+            FailGameplaySmoke(TEXT("ActorPositionMismatch"), TEXT("An enemy does not match the encounter plan."));
+            return;
+        }
+    }
+
+    GameplaySmokeCoreIndex = 0;
+    GameplaySmokeStage = EGameplaySmokeStage::Warmup;
+    GameplaySmokeStageDeadline = GetWorld()->GetTimeSeconds() + 1.0;
+    GetWorldTimerManager().SetTimer(
+        GameplaySmokeTimer,
+        this,
+        &ASeedForgeGameplayCoordinator::AdvanceGameplaySmoke,
+        0.1f,
+        true);
+    GetWorldTimerManager().SetTimer(
+        GameplaySmokeWatchdogTimer,
+        this,
+        &ASeedForgeGameplayCoordinator::GameplaySmokeWatchdog,
+        30.0f,
+        false);
+}
+
+void ASeedForgeGameplayCoordinator::AdvanceGameplaySmoke()
+{
+    const double Now = GetWorld()->GetTimeSeconds();
+    auto AwaitScreenshot = [this, Now](EGameplaySmokeStage NextStage)
+    {
+        if (IsPendingSmokeScreenshotReady())
+        {
+            PendingSmokeScreenshotPath.Reset();
+            GameplaySmokeStage = NextStage;
+            return;
+        }
+        if (Now >= GameplaySmokeStageDeadline)
+        {
+            FailGameplaySmoke(TEXT("ScreenshotTimeout"), TEXT("A required gameplay screenshot was not materialized."));
+        }
+    };
+
+    switch (GameplaySmokeStage)
+    {
+    case EGameplaySmokeStage::Warmup:
+        if (Now >= GameplaySmokeStageDeadline)
+        {
+            GameplaySmokeStage = EGameplaySmokeStage::WaitingStartCapture;
+            RequestSmokeScreenshot(TEXT("start"));
+        }
+        break;
+
+    case EGameplaySmokeStage::WaitingStartCapture:
+        AwaitScreenshot(EGameplaySmokeStage::PrepareCombat);
+        break;
+
+    case EGameplaySmokeStage::PrepareCombat:
+    {
+        ASeedForgeEnemyPawn* Target = nullptr;
+        for (ASeedForgeEnemyPawn* Enemy : EnemyActors)
+        {
+            if (IsValid(Enemy) && !Enemy->IsActorBeingDestroyed())
+            {
+                Target = Enemy;
+                break;
+            }
+        }
+        if (!Target || !IsValid(Player))
+        {
+            FailGameplaySmoke(TEXT("MissingCombatActor"), TEXT("Smoke could not prepare a live player and enemy."));
+            break;
+        }
+        Player->SetActorLocation(FSeedForgeGameplayMath::CellToWorld(
+            Target->GetSpawnCell(),
+            Tuning.CellSize,
+            SeedForge::GameplayCoordinator::Private::PlayerHeight), false);
+        Player->SetAimWorldPoint(Target->GetActorLocation());
+        GameplaySmokeStageDeadline = Now + 0.5;
+        GameplaySmokeStage = EGameplaySmokeStage::Attack;
+        break;
+    }
+
+    case EGameplaySmokeStage::Attack:
+    {
+        ASeedForgeEnemyPawn* Target = nullptr;
+        for (ASeedForgeEnemyPawn* Enemy : EnemyActors)
+        {
+            if (IsValid(Enemy) && !Enemy->IsActorBeingDestroyed())
+            {
+                Target = Enemy;
+                break;
+            }
+        }
+        if (!Target || !IsValid(Player))
+        {
+            FailGameplaySmoke(TEXT("MissingCombatActor"), TEXT("Smoke could not find a live player and enemy."));
+            break;
+        }
+        if (Now < GameplaySmokeStageDeadline)
+        {
+            break;
+        }
+        const FVector TargetLocation = Target->GetActorLocation();
+        Player->SetAimWorldPoint(TargetLocation);
+        if (!TryPlayerAttack(Player->GetActorLocation(), Player->GetAimDirection()))
+        {
+            FailGameplaySmoke(TEXT("AttackRejected"), TEXT("Production attack boundary rejected the first smoke attack."));
+            break;
+        }
+        Player->ShowAttackPulse();
+        GameplaySmokeTrace.Actions.Add(FString::Printf(TEXT("Attack:Enemy:%u"), Target->GetStableId()));
+        GameplaySmokeStage = EGameplaySmokeStage::WaitingCombatCapture;
+        RequestSmokeScreenshot(TEXT("combat"));
+        break;
+    }
+
+    case EGameplaySmokeStage::WaitingCombatCapture:
+        if (IsPendingSmokeScreenshotReady())
+        {
+            PendingSmokeScreenshotPath.Reset();
+            GameplaySmokeStage = EGameplaySmokeStage::FinishCombat;
+            GameplaySmokeStageDeadline = Now + 3.0;
+        }
+        else if (Now >= GameplaySmokeStageDeadline)
+        {
+            FailGameplaySmoke(TEXT("ScreenshotTimeout"), TEXT("Combat screenshot was not materialized."));
+        }
+        break;
+
+    case EGameplaySmokeStage::FinishCombat:
+    {
+        ASeedForgeEnemyPawn* Target = nullptr;
+        for (ASeedForgeEnemyPawn* Enemy : EnemyActors)
+        {
+            if (IsValid(Enemy) && !Enemy->IsActorBeingDestroyed())
+            {
+                Target = Enemy;
+                break;
+            }
+        }
+        if (!Target || !IsValid(Player))
+        {
+            FailGameplaySmoke(TEXT("MissingCombatActor"), TEXT("Smoke lost the damaged enemy before the finishing attack."));
+            break;
+        }
+        Player->SetAimWorldPoint(Target->GetActorLocation());
+        if (!TryPlayerAttack(Player->GetActorLocation(), Player->GetAimDirection()))
+        {
+            if (Now >= GameplaySmokeStageDeadline)
+            {
+                FailGameplaySmoke(TEXT("AttackCooldownTimeout"), TEXT("Second production attack never left cooldown."));
+            }
+            break;
+        }
+        Player->ShowAttackPulse();
+        GameplaySmokeTrace.Actions.Add(FString::Printf(TEXT("Kill:Enemy:%u"), Target->GetStableId()));
+        if (GetLiveEnemyActorCount() != EncounterConfig.EnemyCount - 1)
+        {
+            FailGameplaySmoke(TEXT("EnemyDeathFailed"), TEXT("Second attack did not remove exactly one enemy."));
+            break;
+        }
+        GameplaySmokeStage = EGameplaySmokeStage::CollectCores;
+        break;
+    }
+
+    case EGameplaySmokeStage::CollectCores:
+        if (GameplaySmokeCoreIndex < EncounterPlan.DataCores.Num())
+        {
+            const FSeedForgeEncounterEntity& CoreEntity = EncounterPlan.DataCores[GameplaySmokeCoreIndex];
+            ASeedForgeCorePickup* Core = CoreActors.IsValidIndex(GameplaySmokeCoreIndex)
+                ? CoreActors[GameplaySmokeCoreIndex]
+                : nullptr;
+            if (!IsValid(Core) || !IsValid(Player))
+            {
+                FailGameplaySmoke(TEXT("MissingCore"), TEXT("A required production Core actor is missing."));
+                break;
+            }
+            Player->SetActorLocation(FSeedForgeGameplayMath::CellToWorld(
+                CoreEntity.Cell,
+                Tuning.CellSize,
+                SeedForge::GameplayCoordinator::Private::PlayerHeight), false);
+            TickInteractions();
+            if (RunState.GetCollectedCoreCount() != GameplaySmokeCoreIndex + 1)
+            {
+                FailGameplaySmoke(TEXT("CoreCollectionFailed"), TEXT("Production proximity rule did not collect the expected Core."));
+                break;
+            }
+            GameplaySmokeTrace.Actions.Add(FString::Printf(TEXT("Collect:Core:%u"), CoreEntity.StableId));
+            ++GameplaySmokeCoreIndex;
+            break;
+        }
+        if (!RunState.IsExitUnlocked() || !IsValid(ExitActor) || !ExitActor->IsUnlocked())
+        {
+            FailGameplaySmoke(TEXT("ExitUnlockFailed"), TEXT("Collecting every Core did not unlock the production exit."));
+            break;
+        }
+        GameplaySmokeTrace.Actions.Add(TEXT("ExitUnlocked"));
+        GameplaySmokeStage = EGameplaySmokeStage::ReachExit;
+        break;
+
+    case EGameplaySmokeStage::ReachExit:
+        if (!IsValid(Player) || !IsValid(ExitActor))
+        {
+            FailGameplaySmoke(TEXT("MissingExit"), TEXT("Player or exit is missing before extraction."));
+            break;
+        }
+        Player->SetActorLocation(FSeedForgeGameplayMath::CellToWorld(
+            EncounterPlan.Exit.Cell,
+            Tuning.CellSize,
+            SeedForge::GameplayCoordinator::Private::PlayerHeight), false);
+        TickInteractions();
+        if (RunState.GetState() != ESeedForgeRunState::Won)
+        {
+            FailGameplaySmoke(TEXT("WinTransitionFailed"), TEXT("Production exit rule did not transition Playing to Won."));
+            break;
+        }
+        GameplaySmokeTrace.Actions.Add(TEXT("ReachExit"));
+        GameplaySmokeTrace.StateTransitions.Add(TEXT("Won"));
+        GameplaySmokeStage = EGameplaySmokeStage::WaitingWinCapture;
+        RequestSmokeScreenshot(TEXT("win"));
+        break;
+
+    case EGameplaySmokeStage::WaitingWinCapture:
+        if (IsPendingSmokeScreenshotReady())
+        {
+            PendingSmokeScreenshotPath.Reset();
+            CompleteGameplaySmoke();
+        }
+        else if (Now >= GameplaySmokeStageDeadline)
+        {
+            FailGameplaySmoke(TEXT("ScreenshotTimeout"), TEXT("Win screenshot was not materialized."));
+        }
+        break;
+
+    case EGameplaySmokeStage::Disabled:
+    case EGameplaySmokeStage::Complete:
+    case EGameplaySmokeStage::Failed:
+    default:
+        break;
+    }
+}
+
+void ASeedForgeGameplayCoordinator::GameplaySmokeWatchdog()
+{
+    FailGameplaySmoke(TEXT("SmokeTimeout"), TEXT("Gameplay smoke exceeded its 30 second runtime budget."));
+}
+
+void ASeedForgeGameplayCoordinator::RequestSmokeScreenshot(const TCHAR* Label)
+{
+    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+    PlatformFile.CreateDirectoryTree(*GameplaySmokeCaptureDirectory);
+    PendingSmokeScreenshotPath = FPaths::Combine(
+        GameplaySmokeCaptureDirectory,
+        FString::Printf(TEXT("SeedForge-Gameplay-%s-%llu.png"), Label, Seed));
+    PendingSmokeScreenshotPath = FPaths::ConvertRelativePathToFull(PendingSmokeScreenshotPath);
+    FPaths::MakeStandardFilename(PendingSmokeScreenshotPath);
+    if (PlatformFile.FileExists(*PendingSmokeScreenshotPath))
+    {
+        PlatformFile.DeleteFile(*PendingSmokeScreenshotPath);
+    }
+    GameplaySmokeTrace.ScreenshotPaths.Add(PendingSmokeScreenshotPath);
+    GameplaySmokeStageDeadline = GetWorld()->GetTimeSeconds() + 8.0;
+    FScreenshotRequest::RequestScreenshot(PendingSmokeScreenshotPath, false, false);
+    UE_LOG(LogSeedForge, Display, TEXT("Gameplay smoke requested screenshot: %s"), *PendingSmokeScreenshotPath);
+}
+
+bool ASeedForgeGameplayCoordinator::IsPendingSmokeScreenshotReady() const
+{
+    if (PendingSmokeScreenshotPath.IsEmpty())
+    {
+        return false;
+    }
+    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+    return PlatformFile.FileSize(*PendingSmokeScreenshotPath) >= 10 * 1024;
+}
+
+void ASeedForgeGameplayCoordinator::CompleteGameplaySmoke()
+{
+    GameplaySmokeStage = EGameplaySmokeStage::Complete;
+    GameplaySmokeTrace.bSuccess = true;
+    GameplaySmokeTrace.FailureCode.Reset();
+    GameplaySmokeTrace.FailureMessage.Reset();
+    GetWorldTimerManager().ClearTimer(GameplaySmokeTimer);
+    GetWorldTimerManager().ClearTimer(GameplaySmokeWatchdogTimer);
+    if (!WriteGameplaySmokeTrace())
+    {
+        FailGameplaySmoke(TEXT("TraceWriteFailed"), TEXT("Gameplay smoke could not write its JSON trace."));
+        return;
+    }
+    UE_LOG(
+        LogSeedForge,
+        Display,
+        TEXT("SEEDFORGE_GAMEPLAY_SMOKE_SUCCESS seed=%llu layout_hash=%llu encounter_hash=%llu trace=%s"),
+        Seed,
+        Layout.CanonicalHash,
+        EncounterPlan.CanonicalHash,
+        *GameplaySmokeTracePath);
+    FPlatformMisc::RequestExitWithStatus(false, 0);
+}
+
+void ASeedForgeGameplayCoordinator::FailGameplaySmoke(
+    const TCHAR* FailureCode,
+    const FString& FailureMessage)
+{
+    if (GameplaySmokeStage == EGameplaySmokeStage::Failed)
+    {
+        return;
+    }
+    GameplaySmokeStage = EGameplaySmokeStage::Failed;
+    GameplaySmokeTrace.GitSha = GameplaySmokeGitSha;
+    GameplaySmokeTrace.EngineVersion = FEngineVersion::Current().ToString();
+    GameplaySmokeTrace.Seed = Seed;
+    GameplaySmokeTrace.LayoutHash = Layout.CanonicalHash;
+    GameplaySmokeTrace.EncounterHash = EncounterPlan.CanonicalHash;
+    GameplaySmokeTrace.bSuccess = false;
+    GameplaySmokeTrace.FailureCode = FailureCode;
+    GameplaySmokeTrace.FailureMessage = FailureMessage;
+    if (GetWorld())
+    {
+        GetWorldTimerManager().ClearTimer(GameplaySmokeTimer);
+        GetWorldTimerManager().ClearTimer(GameplaySmokeWatchdogTimer);
+    }
+    WriteGameplaySmokeTrace();
+    UE_LOG(
+        LogSeedForge,
+        Error,
+        TEXT("SEEDFORGE_GAMEPLAY_SMOKE_FAILURE code=%s message=%s"),
+        FailureCode,
+        *FailureMessage);
+    FPlatformMisc::RequestExitWithStatus(false, 2);
+}
+
+bool ASeedForgeGameplayCoordinator::WriteGameplaySmokeTrace()
+{
+    if (GameplaySmokeTracePath.IsEmpty())
+    {
+        return false;
+    }
+    GameplaySmokeTracePath = FPaths::ConvertRelativePathToFull(GameplaySmokeTracePath);
+    IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+    if (!PlatformFile.CreateDirectoryTree(*FPaths::GetPath(GameplaySmokeTracePath)))
+    {
+        return false;
+    }
+    const FString Json = FSeedForgeGameplaySmokeCodec::ExportCanonicalJson(GameplaySmokeTrace)
+        + LINE_TERMINATOR;
+    return FFileHelper::SaveStringToFile(
+        Json,
+        *GameplaySmokeTracePath,
+        FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 
 ASeedForgePlayerCharacter* ASeedForgeGameplayCoordinator::ResolvePlayer()

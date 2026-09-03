@@ -2,13 +2,13 @@
 
 ## Current status
 
-- Active PACT: PACT-33 — automated gameplay smoke and packaging, RED complete.
+- Active PACT: PACT-33 — Editor smoke GREEN; clean-revision Win64 packaging pending.
 - Branch: `feat/phase3-playable-vertical-slice`.
 - Base: `9a306f8ff72cb660d3c04b09806787df21191d45`.
-- Last committed HEAD: `7f6feddfdf86f40165ac6818948c57a4ae7af488` (PACT-32 GREEN).
-- Production behavior changes: PACT-32 is committed; PACT-33 currently contains only the trace schema contract and deliberate serializer stub.
+- Last committed HEAD: `53b10f8353b53b3e46a6e7d595371968dfde119b` (PACT-33 RED contract).
+- Production behavior changes: canonical trace, runtime smoke, Editor smoke/capture validation, packaged wrapper, and Phase 3 aggregate script are implemented and Editor-verified in the worktree.
 - Blockers: none.
-- Next action: commit the PACT-33 RED trace contract, implement canonical trace JSON plus the production-path Editor smoke driver/scripts, then prove Collect/attack/unlock/Won before Win64 packaging.
+- Next action: commit the Editor-verified PACT-33 implementation, then run clean-revision BuildPlugin and `PackageGameplay.ps1` for ordinary packaged launch plus packaged gameplay smoke.
 
 ## Verified commands
 
@@ -30,6 +30,9 @@
 | `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` after PACT-32 | 61 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-194950.log`; `Artifacts/Reports/automation-20260903-194950` |
 | `Scripts/PackagePlugin.ps1` after PACT-32 | Editor Development, Game Development, Game Shipping passed | `Artifacts/Logs/package-plugin-20260903-195024.log` |
 | `Scripts/Test.ps1 -Filter SeedForge.GameplaySmoke -TimeoutSeconds 900` | Authoritative PACT-33 RED: 0 passed, 2 failed for empty trace serialization | `Artifacts/Logs/automation-20260903-195635.log`; `Artifacts/Reports/automation-20260903-195635` |
+| `Scripts/Test.ps1 -Filter SeedForge.GameplaySmoke -TimeoutSeconds 900` after GREEN | 2 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-201150.log`; `Artifacts/Reports/automation-20260903-201150` |
+| `Scripts/Test.ps1 -Filter SeedForge -TimeoutSeconds 900` after smoke integration | 63 passed, 0 warnings, 0 failures | `Artifacts/Logs/automation-20260903-201213.log`; `Artifacts/Reports/automation-20260903-201213` |
+| `Scripts/TestGameplay.ps1 -Seed 24301 -TimeoutSeconds 180` | Editor smoke passed; JSON reparse, 3 screenshots, 0 unexpected warnings/errors | `Artifacts/Reports/Gameplay/20260903-201302/summary.json`; `Artifacts/Logs/gameplay-smoke-editor-20260903-201302.log` |
 
 ## Risks
 

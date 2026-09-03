@@ -90,6 +90,7 @@ ASeedForgePlayerCharacter::ASeedForgePlayerCharacter()
 
     CameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraArm"));
     CameraArm->SetupAttachment(GetCapsuleComponent());
+    CameraArm->SetUsingAbsoluteRotation(true);
     CameraArm->TargetArmLength = 1250.0f;
     CameraArm->SetRelativeRotation(FRotator(-62.0, 0.0, 0.0));
     CameraArm->bDoCollisionTest = false;
