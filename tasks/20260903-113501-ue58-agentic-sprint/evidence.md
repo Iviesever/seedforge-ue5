@@ -35,3 +35,35 @@ The local Unreal Build Accelerator could not bind its optional network listener 
 
 The project module and SeedForge runtime plugin compile with the installed UE 5.8 binary engine and load in an unattended commandlet. PACT-01 may begin from commit `codex/seedforge-implementation` after the scaffold commit is recorded.
 
+## PACT-01 — Deterministic generation core, first red-green cycle
+
+Status: **Initial behavior passed** on 2026-09-03 (UTC+8). Further boundary/property coverage continues under PACT-02.
+
+### RED
+
+- Three tests were compiled and discovered:
+  - `SeedForge.Core.RejectsInvalidGrid`
+  - `SeedForge.Core.RejectsInvalidRoomRange`
+  - `SeedForge.Core.SameSeedIsDeterministic`
+- The first correctly quoted Automation run executed all three against the `NotImplemented` stub and produced `failed=3`.
+- The test harness itself initially returned a false success because UnrealEditor exits with status 0 even when Automation reports failures. The harness was corrected to parse `index.json`, require at least one executed test, and reject failed/not-run/in-process/warning counts.
+- Confirmed failing harness evidence:
+  - `Artifacts/Logs/automation-20260903-123026.log`
+  - `Artifacts/Reports/automation-20260903-123026/index.json`
+
+### GREEN
+
+- Implemented only the behavior demanded by the three tests:
+  - typed validation for invalid grid and room-size ranges;
+  - bounded deterministic room placement;
+  - canonical room/corridor ordering;
+  - deterministic L-shaped connectivity;
+  - explicit entrance/exit selection;
+  - byte-defined FNV-1a canonical hashing.
+- Build result: succeeded with MSVC 14.44.35228 and no SeedForge compile warning in 32.08 seconds.
+- Automation result: `succeeded=3`, `failed=0`, `notRun=0`, `inProcess=0`.
+- Evidence:
+  - `Artifacts/Logs/build-editor-20260903-123236.log`
+  - `Artifacts/Logs/automation-20260903-123318.log`
+  - `Artifacts/Reports/automation-20260903-123318/index.json`
+

@@ -14,7 +14,11 @@
       "Name": "SeedForgeRuntime",
       "Type": "Runtime",
       "LoadingPhase": "Default"
+    },
+    {
+      "Name": "SeedForgeTests",
+      "Type": "DeveloperTool",
+      "LoadingPhase": "PostEngineInit"
     }
   ]
 }
-
