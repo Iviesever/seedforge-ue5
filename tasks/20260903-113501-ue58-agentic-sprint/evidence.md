@@ -153,3 +153,40 @@ Status: **Passed** on 2026-09-03 (UTC+8).
 - Latent Automation command declarations initially lacked the semicolon required by UE's macro expansion; only test syntax was changed.
 - Direct UObject use in `SeedForgeTests` initially exposed missing `CoreUObject` and `Engine` module dependencies at link time; only the test module manifest was corrected.
 - The production runtime module linked successfully throughout those test-harness corrections.
+
+## PACT-04 — Pure C++ graybox demo
+
+Status: **Passed in Editor game mode** on 2026-09-03 (UTC+8). Packaged-game verification remains in PACT-05.
+
+### Visualization RED and GREEN
+
+- Two pure planner tests specify that one walkable cell creates one floor plus four exterior walls, while two adjacent cells create two floors plus six exterior walls with no duplicated shared edge.
+- The empty planner produced `failed=2`.
+- RED evidence:
+  - `Artifacts/Logs/automation-20260903-125943.log`
+  - `Artifacts/Reports/automation-20260903-125943/index.json`
+- The canonical planner now emits deterministic floor/wall transforms and bounds from canonical walkable cells.
+- GREEN evidence:
+  - `Artifacts/Logs/automation-20260903-130112.log`
+  - `Artifacts/Reports/automation-20260903-130112/index.json`
+
+### Generated map and runtime path
+
+- `Scripts/CreateDemoMap.py` created and saved the only project-owned map automatically through UE's Python commandlet path.
+- Map: `Content/Maps/SeedForgeDemo.umap` (6,379 bytes).
+- Generation evidence: `Artifacts/Logs/create-demo-map-20260903-130551.log`.
+- `ASeedForgePreviewActor` requests generation through the world subsystem, validates the result, converts it to HISM transforms, and logs all observable metrics.
+- `ASeedForgeDemoGameMode` creates engine-native light/camera actors. Interactive runs use the engine `ADefaultPawn` free-fly controls; capture runs switch to a fixed camera and hide the pawn.
+
+### End-to-end visual verification
+
+- Command: `powershell -NoProfile -ExecutionPolicy Bypass -File Scripts/CaptureDemo.ps1`
+- Final seed: 24301 (`0x5EED`)
+- Canonical hash: 7425849530159566348
+- Applied instances: 587 floors, 436 boundary walls
+- Observed end-to-end async/apply time: 419.464 ms on the recorded run
+- Screenshot: `docs/images/seedforge-24301.png` (1,280 x 720, visually inspected)
+- Runtime evidence: `Artifacts/Logs/capture-demo-20260903-131138.log`
+- The complete suite after scene integration passed 20 tests with zero warnings/failures/not-run/in-process tests:
+  - `Artifacts/Logs/automation-20260903-130918.log`
+  - `Artifacts/Reports/automation-20260903-130918/index.json`
