@@ -28,7 +28,8 @@ $summaryPath = Join-Path $runReportRoot 'summary.json'
 $logPath = Join-Path $logRoot "gameplay-smoke-$RunLabel-$timestamp.log"
 
 New-Item -ItemType Directory -Force -Path $logRoot, $runReportRoot, $runMediaRoot, $cacheRoot, $userRoot | Out-Null
-Set-Item -Path 'Env:UE-LocalDataCachePath' -Value $cacheRoot
+. (Join-Path $PSScriptRoot 'BuildEnvironment.ps1')
+Initialize-SeedForgeBuildEnvironment -ProjectRoot $projectRoot
 
 if ([string]::IsNullOrWhiteSpace($Executable)) {
     $Executable = $editor

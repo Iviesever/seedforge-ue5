@@ -22,7 +22,8 @@ if (-not (Test-Path -LiteralPath $editor)) {
     throw "UnrealEditor.exe was not found at '$editor'."
 }
 
-Set-Item -Path 'Env:UE-LocalDataCachePath' -Value $cacheRoot
+. (Join-Path $PSScriptRoot 'BuildEnvironment.ps1')
+Initialize-SeedForgeBuildEnvironment -ProjectRoot $projectRoot
 if (Test-Path -LiteralPath $capturePath) {
     Remove-Item -LiteralPath $capturePath
 }

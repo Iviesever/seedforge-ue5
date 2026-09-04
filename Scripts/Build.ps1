@@ -21,7 +21,8 @@ if (-not (Test-Path -LiteralPath $buildScript)) {
     throw "Unreal Build.bat was not found at '$buildScript'."
 }
 
-Set-Item -Path 'Env:UE-LocalDataCachePath' -Value $cacheRoot
+. (Join-Path $PSScriptRoot 'BuildEnvironment.ps1')
+Initialize-SeedForgeBuildEnvironment -ProjectRoot $projectRoot
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $consoleLogPath = Join-Path $logRoot "build-editor-$timestamp.log"
 $ubtLogPath = Join-Path $logRoot "ubt-editor-$timestamp.log"
@@ -33,6 +34,7 @@ $arguments = @(
     '-WaitMutex',
     '-NoHotReloadFromIDE',
     '-NoEngineChanges',
+    '-UBADisableRemote',
     "-Log=$ubtLogPath"
 )
 

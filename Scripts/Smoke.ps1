@@ -20,7 +20,8 @@ if (-not (Test-Path -LiteralPath $editor)) {
     throw "UnrealEditor-Cmd.exe was not found at '$editor'."
 }
 
-Set-Item -Path 'Env:UE-LocalDataCachePath' -Value $cacheRoot
+. (Join-Path $PSScriptRoot 'BuildEnvironment.ps1')
+Initialize-SeedForgeBuildEnvironment -ProjectRoot $projectRoot
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $logPath = Join-Path $logRoot "smoke-editor-$timestamp.log"
 $arguments = @(

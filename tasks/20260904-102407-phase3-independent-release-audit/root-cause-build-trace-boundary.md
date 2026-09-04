@@ -25,3 +25,7 @@ Recommended narrow exception: permit only UE/UBT's own default `Trace*.uba` diag
 If the user requires zero such default diagnostic writes, do not modify Engine files, global known-folder configuration, or user-directory junctions without separate approval. That stricter environment needs an authorized isolation/redirection approach before the UE verification gates can resume.
 
 This is the first goal turn identifying the authority blocker. The goal remains active, not completed or marked blocked. Task F/G/H and all final release gates remain incomplete.
+
+## Resolution — 2026-09-04
+
+After the goal was marked blocked following three consecutive occurrences, the user explicitly replied `同意` to the narrow Trace*.uba exception. The goal is active again. Only UE/UBT's default trace/backup files at the named user-directory path are permitted; Engine and global folder settings remain untouched. Proceed with project-local UBA storage and supported remote-disable configuration, then resume F/G/H and the complete release audit.

@@ -16,7 +16,8 @@ $releaseRoot = Join-Path $artifactRoot 'Release'
 $cacheRoot = Join-Path $projectRoot '.cache\DerivedDataCache'
 
 New-Item -ItemType Directory -Force -Path $logRoot, $pluginRoot, $releaseRoot, $cacheRoot | Out-Null
-Set-Item -Path 'Env:UE-LocalDataCachePath' -Value $cacheRoot
+. (Join-Path $PSScriptRoot 'BuildEnvironment.ps1')
+Initialize-SeedForgeBuildEnvironment -ProjectRoot $projectRoot
 
 if (-not (Test-Path -LiteralPath $runUat)) {
     throw "RunUAT.bat was not found at '$runUat'."

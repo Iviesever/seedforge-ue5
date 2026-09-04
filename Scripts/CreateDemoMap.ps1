@@ -16,7 +16,8 @@ $cacheRoot = Join-Path $projectRoot '.cache\DerivedDataCache'
 $userRoot = Join-Path $projectRoot '.user'
 
 New-Item -ItemType Directory -Force -Path $logRoot, $cacheRoot, $userRoot | Out-Null
-Set-Item -Path 'Env:UE-LocalDataCachePath' -Value $cacheRoot
+. (Join-Path $PSScriptRoot 'BuildEnvironment.ps1')
+Initialize-SeedForgeBuildEnvironment -ProjectRoot $projectRoot
 
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $logPath = Join-Path $logRoot "create-demo-map-$timestamp.log"

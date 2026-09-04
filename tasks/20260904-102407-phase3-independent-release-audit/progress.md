@@ -6,6 +6,7 @@
 - Latest user instruction authorizes fixes, pushes, Draft PR #1 updates, then merge and a source-only GitHub Release after all 16 gates pass. It supersedes the packet's older no-merge/no-release boundary.
 - Do not upload plugin/demo ZIPs as Release assets. Local packaging and verification remain mandatory; GitHub's default source ZIP/tarball are the only release downloads requested.
 - One primary agent, existing checkout only, one UE writer process at a time; Engine read-only.
+- User approved the sole external internal-diagnostic exception for `C:\Users\Iviesever\AppData\Local\UnrealBuildTool\Trace*.uba` on 2026-09-04. Project artifacts/evidence remain inside the repository; Engine/global folder settings remain unchanged.
 
 ## Fresh preflight (2026-09-04 10:23–10:24 UTC+8)
 
@@ -31,6 +32,7 @@
 - [x] E — SF-IRA-007/009 local: true completion/request identity, cleared pending hashes, direct apply request 0; 3 focused, 6 failure, 3 restart and full 86/86; script marker negative checks pass.
 - [ ] F — SF-IRA-005: render-owned screenshots and strict PNG proof.
 - [ ] G — SF-IRA-002: immutable clean-revision evidence and negative harness.
+- [x] G prelude only: project-local UBA/DDC inheritance at 11 launchers; Build/BuildCookRun scoped remote-disable flags; PowerShell RED→GREEN and full 86/86. This does not close the remaining G gates.
 - [ ] H — SF-IRA-008: real path/movement/restart/input integration.
 - [ ] I — documentation and disclosure calibrated to new evidence.
 - [ ] Gates 1–16: all not-run for this audit until fresh results are recorded.
@@ -46,6 +48,6 @@ Task C commit: `554ff5ff61182343f789f4e829ac196e4226b76c`; combined live Dash an
 
 Task D commit: `4b68da82c89f5dc1776a264fd94bb8dcd5d1b216`; safe-coordinate RED→GREEN and independent review are in `sf-ira-006-evidence.md`.
 
-Task E has passed request/pending identity RED→GREEN, independent review, and script marker checks; see `sf-ira-007-009-evidence.md`. Latest full suite is 86/86, zero test warnings/failures/not-run/in-process (`automation-20260904-114207`). Before another UE run, perform a G prelude to confine UBA diagnostics: a physical read confirmed the default user-profile trace is still updated, including nested Editor platform-validation UBT. Then continue task F's render-owned captures, remaining G provenance gates, and H actual packaged input/path proof. Final Gate 14 still needs the UE Dataflow initialization diagnostic reviewed; it is not allow-listed. Historical packages are not current independent release certification.
+Task E commit: `648b776a01e98cf1408d4b33bd19d23b297380db`; request/pending identity RED→GREEN and script checks are in `sf-ira-007-009-evidence.md`.
 
-Task E commit: `648b776a01e98cf1408d4b33bd19d23b297380db`. Read-only source investigation found that default UBT Trace.uba initialization precedes normal argument/config parsing and is rooted in the Windows user known folder. See `root-cause-build-trace-boundary.md`: a narrow user-approved tool-diagnostic exception (or separately authorized isolation) is required before the next UE process. No Engine/global-folder change has been made. First occurrence of this authority blocker; do not mark the goal complete or blocked yet.
+The trace-boundary blocker is resolved by the user's narrow exception. The build-environment prelude has passed corrected argument-scope RED→GREEN and independent re-review; see `build-environment-evidence.md`. Latest full suite is 86/86, zero test warnings/failures/not-run/in-process (`automation-20260904-120348`); the corrected incremental Build contains no invalid-argument or remote-bind diagnostic and the global UBT environment XML remained unchanged. Next: clean-commit Editor smoke, task F render-owned captures/visual proof, remaining G immutable-provenance/BuildPlugin/log gates, and H actual packaged input/path evidence. Final Gate 14 still needs the UE Dataflow diagnostic reviewed; it is not allow-listed. Historical packages are not current certification.

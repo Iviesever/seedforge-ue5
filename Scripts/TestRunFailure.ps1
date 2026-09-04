@@ -9,6 +9,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $projectRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'BuildEnvironment.ps1')
+Initialize-SeedForgeBuildEnvironment -ProjectRoot $projectRoot
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss-fff'
 $runRoot = Join-Path $projectRoot "Artifacts\Reports\RunFailure\$stamp-$Case"
 $userRoot = Join-Path $projectRoot '.user\RunFailure'
