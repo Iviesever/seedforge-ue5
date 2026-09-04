@@ -15,5 +15,6 @@ foreach($launcher in $launchers){$body=Get-Content -Raw -LiteralPath (Join-Path 
 foreach($launcher in $launchers){$body=Get-Content -Raw -LiteralPath (Join-Path $projectRoot "Scripts/$launcher.ps1");if($body -notmatch 'Assert-SeedForgeRuntimeStorage -Path'){throw "$launcher omits post-process runtime storage validation."}}
 $package=Get-Content -Raw -LiteralPath (Join-Path $projectRoot 'Scripts/PackageDemo.ps1')
 if($package -notmatch 'SkipZenStore' -or $package -notmatch 'AdditionalCookerOptions'){throw 'Cooker does not select the confined non-Zen store.'}
+if($package -notmatch [regex]::Escape('-ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False')){throw 'Cooker must disable the independent EditorDomain Zen attachment client.'}
 if($package -notmatch 'AdditionalPakOptions' -or $package -match 'AdditionalIoStoreOptions'){throw 'Common storage arguments must use AdditionalPakOptions exactly once; UE 5.8 IoStore inherits them.'}
 Write-Host 'Runtime storage contract passed: local graph/store, explicit paths, no fallback, 10 launchers and cooker.'

@@ -8,6 +8,18 @@ New-Item -ItemType Directory -Path $out -Force | Out-Null
 $fixtureRoot=Join-Path $out 'Synthetic Project With Spaces'
 New-Item -ItemType Directory -Path $fixtureRoot,(Join-Path $fixtureRoot 'Artifacts'),(Join-Path $fixtureRoot '.cache/Temp'),(Join-Path $fixtureRoot '.cache/DerivedDataCache') -Force | Out-Null
 [IO.File]::WriteAllText((Join-Path $fixtureRoot 'SeedForge.uproject'),'{"SyntheticTestFixtureOnly":true}')
+$knownExecutableDirectory='D:\program\UnrealEngine\Epic Games\UE_5.8\Engine\Binaries\Win64'
+function RelativeToExecutable([string]$Target) {
+    $baseUri=[uri]($knownExecutableDirectory+'\')
+    return [uri]::UnescapeDataString($baseUri.MakeRelativeUri([uri]$Target).ToString())
+}
+function Set-RelativeLegacyFixture($Data) {
+    $Data.ExpectedExecutableDirectory=$knownExecutableDirectory
+    $Data.NeedsRelativeProof=$true
+    $Data.RelativePath=RelativeToExecutable (Join-Path $fixtureRoot 'Intermediate/Shaders/WorkingDirectory/48552/')
+    $Data.Lines[8]="LogShaderCompilers: Guid format shader working directory is 17 characters bigger than the processId version ($($Data.RelativePath))."
+    $Data.Lines+=('LogInit: Base Directory: '+$knownExecutableDirectory+'/')
+}
 function New-SyntheticStorageLog {
     @(
         'SYNTHETIC LOG FIXTURE ONLY - NOT RUNTIME OR RELEASE EVIDENCE',
@@ -32,7 +44,7 @@ Case 'case and slash normalization for paths' {$d.Lines=@($d.Lines|ForEach-Objec
 Case 'disabled shared/cloud are not writes' {$d.Lines+=@("LogDerivedDataCache: Shared: Disabled because no path is configured.","LogDerivedDataCache: Cloud: Disabled because Host is set to 'None'")} $true
 Case 'cache-free packaged log' {$d.Lines=@('LogInit: Command Line: -game -unattended','LogCsvProfiler: Display: Metadata set : zenstreaming="0"')} $true $false
 Case 'packaged with DDC still validates active store' {} $true $false
-Case 'cook explicitly skips Zen store' {$d.Lines[1]+=' -run=Cook -SkipZenStore'} $true
+Case 'cook explicitly skips Zen store and optional attachments' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False'} $true
 Case 'missing native command line' {$d.Lines=@($d.Lines|Where-Object {$_ -notmatch '^LogInit: Command Line:'})}
 Case 'duplicate native command lines' {$d.Lines+=$d.Lines[1]}
 Case 'CSV metadata is not native command line' {$d.Lines[1]=$d.Lines[1].Replace('LogInit: Command Line:','LogCsvProfiler: Display: commandline=')}
@@ -89,13 +101,66 @@ Case 'duplicate writable local backend' {$d.Lines+=$d.Lines[7]}
 Case 'unknown XGE working-path form fails closed' {$d.Lines+='LogXGEController: Working path moved to C:/Users/Outside/Temp/'}
 Case 'cache-free packaged runtime retains safe shared arguments' {$d.Lines=@($d.Lines[0],$d.Lines[1],$d.Lines[2])} $true $false
 Case 'cache-free packaged runtime still rejects unsafe arguments' {$d.Lines=@($d.Lines[0],$d.Lines[1].Replace('-DDC=SeedForgeLocal','-DDC=Default'),$d.Lines[2])} $false $false
+Case 'relative legacy path binds trusted native executable directory' {Set-RelativeLegacyFixture $d} $true
+Case 'relative binding normalizes case slash and trailing separator' {Set-RelativeLegacyFixture $d;$d.Lines[-1]='LogInit: Base Directory: '+$knownExecutableDirectory.ToUpperInvariant().Replace('\','/')+'//'} $true
+Case 'relative binding does not use current shell directory' {Set-RelativeLegacyFixture $d;$d.ChangeLocation=$true} $true
+Case 'relative legacy cannot trust only logged base' {Set-RelativeLegacyFixture $d;$d.ExpectedExecutableDirectory=$null}
+Case 'relative legacy requires native base record' {Set-RelativeLegacyFixture $d;$d.Lines=@($d.Lines|Where-Object {$_ -notlike 'LogInit: Base Directory:*'})}
+Case 'duplicate identical native base is ambiguous' {Set-RelativeLegacyFixture $d;$d.Lines+=$d.Lines[-1]}
+Case 'duplicate different native base is ambiguous' {Set-RelativeLegacyFixture $d;$d.Lines+='LogInit: Base Directory: D:/OtherEngine/Engine/Binaries/Win64/'}
+Case 'native base differs from caller expectation' {Set-RelativeLegacyFixture $d;$d.Lines[-1]='LogInit: Base Directory: D:/OtherEngine/Engine/Binaries/Win64/'}
+Case 'caller base must be absolute' {Set-RelativeLegacyFixture $d;$d.ExpectedExecutableDirectory='Engine/Binaries/Win64'}
+Case 'drive-root base cannot become process-relative on Windows PowerShell' {
+    $driveRoot=[IO.Path]::GetPathRoot($fixtureRoot);$d.ExpectedExecutableDirectory=$driveRoot
+    $d.Lines+=('LogInit: Base Directory: '+$driveRoot)
+    $d.Lines[8]='LogShaderCompilers: Guid format shader working directory is 17 characters bigger than the processId version (Intermediate/Shaders/WorkingDirectory/48552/).'
+    $d.ProcessDirectory=$fixtureRoot
+}
+Case 'normalized drive-root base also rejects process-relative fallback' {
+    $driveRoot=[IO.Path]::GetPathRoot($fixtureRoot);$d.ExpectedExecutableDirectory=$driveRoot+'Unused/..'
+    $d.Lines+=('LogInit: Base Directory: '+$driveRoot)
+    $d.Lines[8]='LogShaderCompilers: Guid format shader working directory is 17 characters bigger than the processId version (Intermediate/Shaders/WorkingDirectory/48552/).'
+    $d.ProcessDirectory=$fixtureRoot
+}
+Case 'native base must be absolute' {Set-RelativeLegacyFixture $d;$d.Lines[-1]='LogInit: Base Directory: ../../../Engine/Binaries/Win64/'}
+Case 'CSV base metadata is not native base authority' {Set-RelativeLegacyFixture $d;$d.Lines[-1]=$d.Lines[-1].Replace('LogInit:','LogCsvProfiler:')}
+Case 'bound relative legacy still rejects project escape' {Set-RelativeLegacyFixture $d;$d.Lines[8]=$d.Lines[8].Replace('Synthetic Project With Spaces','Different Project')}
+Case 'bound relative legacy still rejects prefix escape' {Set-RelativeLegacyFixture $d;$d.Lines[8]=$d.Lines[8].Replace('Synthetic Project With Spaces','Synthetic Project With Spaces-evil')}
+Case 'bound relative legacy rejects drive-relative syntax' {Set-RelativeLegacyFixture $d;$d.Lines[8]=$d.Lines[8].Replace($d.RelativePath,'D:Intermediate/Shaders/WorkingDirectory/48552/')}
+Case 'bound relative legacy rejects root-relative syntax' {Set-RelativeLegacyFixture $d;$d.Lines[8]=$d.Lines[8].Replace($d.RelativePath,'\Intermediate\Shaders\WorkingDirectory\48552\')}
+Case 'bound relative legacy rejects UNC syntax' {Set-RelativeLegacyFixture $d;$d.Lines[8]=$d.Lines[8].Replace($d.RelativePath,'\\server\share\Intermediate\Shaders\WorkingDirectory\48552\')}
+Case 'bound base does not permit relative shader cleanup' {Set-RelativeLegacyFixture $d;$d.Lines[9]="LogShaderCompilers: Cleaned the shader compiler working directory '$($d.RelativePath)'."}
+Case 'bound base does not permit relative XGE cleanup' {Set-RelativeLegacyFixture $d;$d.Lines[10]='LogXGEController: Cleaning working directory: '+$d.RelativePath}
+Case 'bound base does not permit relative DDC path' {Set-RelativeLegacyFixture $d;$d.Lines[7]=$d.Lines[7].Replace("$fixtureRoot/.cache/DerivedDataCache",$d.RelativePath)}
+Case 'bound relative legacy never permits Zen service activity' {Set-RelativeLegacyFixture $d;$d.Lines+="LogZenServiceInstance: Display: Launching zen utility 'D:/Engine/zen.exe service status'."}
+Case 'bound relative legacy rejects reparse target' {
+    Set-RelativeLegacyFixture $d
+    $target=Join-Path $out 'Synthetic Relative Reparse Target';New-Item -ItemType Directory -Path $target -Force|Out-Null
+    $link=Join-Path $fixtureRoot ('.cache/Temp/RelativeLink-'+[guid]::NewGuid().ToString('N'));New-Item -ItemType Junction -Path $link -Target $target|Out-Null
+    $newRelative=RelativeToExecutable (Join-Path $link 'Intermediate/Shaders/WorkingDirectory/48552/')
+    $d.Lines[8]=$d.Lines[8].Replace($d.RelativePath,$newRelative)
+}
+Case 'cook missing optional attachment disable' {$d.Lines[1]+=' -run=Cook -SkipZenStore'}
+Case 'cook attachment override in Engine not Editor namespace' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ini:Engine:[EditorDomain]:CookAttachmentsEnabled=False'}
+Case 'cook attachments explicitly enabled' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=True'}
+Case 'cook duplicate attachment disable' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False'}
+Case 'cook conflicting attachment overrides' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=True'}
+Case 'cook comma-merged attachment conflict' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False,CookAttachmentsEnabled=True'}
+Case 'cook attachment disable inside unrelated quoted argument' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ExecCmds="echo -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False"'}
+Case 'cook extra Editor override is outside contract' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False -ini:Editor:[Other]:Value=True'}
+Case 'cook attachment override must be precise' {$d.Lines[1]+=' -run=Cook -SkipZenStore -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=false'}
 $results=@();$index=0
-foreach($case in $cases){$index++;$d=[pscustomobject]@{Lines=(New-SyntheticStorageLog)};& $case.Mutate
+foreach($case in $cases){$index++;$d=[pscustomobject]@{Lines=(New-SyntheticStorageLog);ExpectedExecutableDirectory=$null;RelativePath='';NeedsRelativeProof=$false;ChangeLocation=$false;ProcessDirectory=$null};& $case.Mutate
     $path=Join-Path $fixtureRoot ("Artifacts/case-$index.log");[IO.File]::WriteAllText($path,($d.Lines -join "`r`n"))
     $originalHash=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant();$accepted=$false;$message=''
-    try{$proof=Assert-SeedForgeRuntimeStorage -Path $path -ProjectRoot $fixtureRoot -RequireDdc:$case.RequireDdc;$accepted=$true
+    $call=@{Path=$path;ProjectRoot=$fixtureRoot;RequireDdc=$case.RequireDdc};if($null -ne $d.ExpectedExecutableDirectory){$call.ExpectedExecutableDirectory=$d.ExpectedExecutableDirectory}
+    if($d.ChangeLocation){Push-Location -LiteralPath $fixtureRoot}
+    $previousProcessDirectory=[Environment]::CurrentDirectory
+    if($null -ne $d.ProcessDirectory){[Environment]::CurrentDirectory=$d.ProcessDirectory}
+    try{$proof=Assert-SeedForgeRuntimeStorage @call;$accepted=$true
         if($proof.Validated -ne $true -or $proof.Sha256 -cne $originalHash -or $proof.Path -cne $path){throw 'Returned proof/hash/path mismatch.'}
-    }catch{$message=$_.Exception.Message}
+        if($case.Accept -and $d.NeedsRelativeProof -and ($proof.RelativeLegacyShaderPathCount -ne 1 -or $proof.BaseDirectoryMatched -ne $true)){throw 'Relative path proof did not record its trusted base binding.'}
+    }catch{$message=$_.Exception.Message}finally{[Environment]::CurrentDirectory=$previousProcessDirectory;if($d.ChangeLocation){Pop-Location}}
     $passed=($accepted -eq $case.Accept) -and (-not $case.Accept -or $message -eq '')
     $results+=[pscustomobject]@{Name=$case.Name;Passed=$passed;ExpectedAccept=$case.Accept;Accepted=$accepted;Message=$message}
     if(-not $passed){Write-Host "FAIL $($case.Name): $message"}

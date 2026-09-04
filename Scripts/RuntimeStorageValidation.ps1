@@ -2,9 +2,13 @@ function Assert-SeedForgeRuntimeStorage {
     <# Validates observed storage behavior, not all filesystem activity. The
        caller must also audit the whole log and bind it to a completed process.
        RequireDdc=false permits a cache-free packaged runtime, never an unsafe
-       observed store/path or a fallback graph. No global files are inspected. #>
+       observed store/path or a fallback graph. Only the exact legacy shader
+       comparison message may resolve a relative path, using an explicitly
+       supplied executable directory matched to one native Base Directory.
+       No global files are inspected. #>
     [CmdletBinding()]
-    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$ProjectRoot,[bool]$RequireDdc=$true)
+    param([Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string]$ProjectRoot,[bool]$RequireDdc=$true,
+        [string]$ExpectedExecutableDirectory)
     Set-StrictMode -Version Latest
     $ErrorActionPreference='Stop'
     function Reject([string]$Reason) { throw "RuntimeStorage: $Reason" }
@@ -13,7 +17,9 @@ function Assert-SeedForgeRuntimeStorage {
             $Value.Substring(2).Contains(':') -or $Value.IndexOfAny([char[]]'"<>|?*') -ge 0 -or $Value -match '[\x00-\x1f]') {
             Reject "Expected an absolute local Windows path: '$Value'."
         }
-        return [IO.Path]::GetFullPath($Value.Replace('/','\')).TrimEnd('\')
+        $full=[IO.Path]::GetFullPath($Value.Replace('/','\')).TrimEnd('\')
+        if($full -match '\A[A-Za-z]:\z'){Reject 'Drive roots are not supported project/executable/file paths.'}
+        return $full
     }
     function CheckOwnedPath([string]$Value,[bool]$ExactDdc=$false) {
         $full=FullPath $Value
@@ -82,8 +88,13 @@ function Assert-SeedForgeRuntimeStorage {
         $lines=New-Object 'Collections.Generic.List[string]'
         while(-not $reader.EndOfStream){$lines.Add($reader.ReadLine())}
     }finally{if($null -ne $reader){$reader.Dispose()};if($null -ne $sha){$sha.Dispose()};$stream.Dispose()}
+    $nativeBaseDirectories=New-Object 'Collections.Generic.List[string]'
+    foreach($line in $lines){
+        $text=$line -replace '\A(?:\[[^\]\r\n]*\]){1,2}\s*',''
+        if($text -match '\ALogInit:\s*(?:Display:\s*)?Base Directory:\s*(?<path>.+)\z'){$nativeBaseDirectories.Add($Matches.path)}
+    }
     $commands=New-Object 'Collections.Generic.List[string]'
-    $ddcObserved=$false;$ddcStores=0;$shaderPaths=0;$xgePaths=0;$lineNumber=0
+    $ddcObserved=$false;$ddcStores=0;$shaderPaths=0;$xgePaths=0;$lineNumber=0;$relativeLegacyPaths=0;$baseDirectoryMatched=$false
     foreach($line in $lines){$lineNumber++
         $text=$line -replace '\A(?:\[[^\]\r\n]*\]){1,2}\s*',''
         if($text -match '\A(?:LogZenServiceInstance|LogZenServer|LogZenStorage|LogZenStore):') { Reject "Zen service/storage activity at line $lineNumber." }
@@ -116,10 +127,21 @@ function Assert-SeedForgeRuntimeStorage {
             if($message -match '\A(?<path>.+): (?:Speed tests took|Performance:).+\z'){$null=CheckOwnedPath $Matches.path $true;continue}
         }
         if($category -eq 'LogShaderCompilers' -and $message -match '(?i)working (?:directory|path)|temporary (?:directory|path)|(?:working|temp).*?[A-Za-z]:[\\/]'){
-            $workingPath=$null
+            $workingPath=$null;$isLegacyComparison=$false
             if($message -match "\ACleaned the shader compiler working directory '(?<path>[^']+)'\.\z"){$workingPath=$Matches.path}
-            elseif($message -match '\AGuid format shader working directory is -?[0-9]+ characters bigger than the processId version \((?<path>.+)\)\.\z'){$workingPath=$Matches.path}
+            elseif($message -match '\AGuid format shader working directory is -?[0-9]+ characters bigger than the processId version \((?<path>.+)\)\.\z'){$workingPath=$Matches.path;$isLegacyComparison=$true}
             if($null -eq $workingPath){Reject "Unrecognized shader working-path record at line $lineNumber."}
+            if($isLegacyComparison -and $workingPath -notmatch '\A[A-Za-z]:[\\/]'){
+                if([string]::IsNullOrWhiteSpace($ExpectedExecutableDirectory) -or $nativeBaseDirectories.Count -ne 1){Reject "Relative legacy shader path requires a caller directory and exactly one native Base Directory at line $lineNumber."}
+                $expectedBase=FullPath $ExpectedExecutableDirectory;$nativeBase=FullPath $nativeBaseDirectories[0]
+                if(-not $nativeBase.Equals($expectedBase,[StringComparison]::OrdinalIgnoreCase)){Reject "Native Base Directory differs from the expected executable directory at line $lineNumber."}
+                if([string]::IsNullOrWhiteSpace($workingPath) -or $workingPath -match '\A[\\/]|[\x00-\x1f]' -or $workingPath.Contains(':') -or $workingPath.IndexOfAny([char[]]'"<>|?*') -ge 0){Reject "Invalid relative legacy shader path at line $lineNumber."}
+                # UE's FPaths conversion uses FPlatformProcess::BaseDir, not the
+                # shell/provider working directory. Both inputs above are bound
+                # before combining, and the result still receives normal checks.
+                $workingPath=[IO.Path]::GetFullPath([IO.Path]::Combine($expectedBase,$workingPath.Replace('/','\')))
+                $relativeLegacyPaths++;$baseDirectoryMatched=$true
+            }
             $null=CheckOwnedPath $workingPath;$shaderPaths++
         }
         if($category -eq 'LogXGEController' -and $message -match '(?i)working (?:directory|path)|temporary (?:directory|path)|(?:working|temp).*?[A-Za-z]:[\\/]'){
@@ -143,6 +165,10 @@ function Assert-SeedForgeRuntimeStorage {
     if(@($tokens|Where-Object {$_ -ieq '-run=Cook'}).Count -gt 0){
         $skip=@($tokens|Where-Object {$_ -match '\A-SkipZenStore(?:=|\z)'})
         if($skip.Count -ne 1 -or $skip[0] -cne '-SkipZenStore'){Reject 'Cook must explicitly skip Zen cooked storage.'}
+        $editorOverrides=@($tokens|Where-Object {$_ -match '\A-ini:Editor(?::|=|\z)'})
+        if($editorOverrides.Count -ne 1 -or $editorOverrides[0] -cne '-ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False'){
+            Reject 'Cook must disable optional EditorDomain attachments with exactly one precise Editor override.'
+        }
     }
-    return [pscustomobject]@{Path=$logPath;Sha256=$hash;Length=$length;LineCount=$lines.Count;Validated=$true;RequireDdc=$RequireDdc;DdcStoreCount=$ddcStores;ShaderWorkingPathCount=$shaderPaths;XgeWorkingPathCount=$xgePaths}
+    return [pscustomobject]@{Path=$logPath;Sha256=$hash;Length=$length;LineCount=$lines.Count;Validated=$true;RequireDdc=$RequireDdc;DdcStoreCount=$ddcStores;ShaderWorkingPathCount=$shaderPaths;XgeWorkingPathCount=$xgePaths;RelativeLegacyShaderPathCount=$relativeLegacyPaths;BaseDirectoryMatched=$baseDirectoryMatched}
 }

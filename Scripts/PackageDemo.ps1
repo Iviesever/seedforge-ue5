@@ -63,7 +63,7 @@ $arguments = @(
     '-utf8output',
     '-NoCodeSign'
     '-UbtArgs=-UBADisableRemote'
-    ('-AdditionalCookerOptions="' + $runtimeOptions + ' -SkipZenStore"')
+    ('-AdditionalCookerOptions="' + $runtimeOptions + ' -SkipZenStore -ini:Editor:[EditorDomain]:CookAttachmentsEnabled=False"')
     ('-AdditionalPakOptions="' + $runtimeOptions + '"')
 )
 
@@ -82,7 +82,8 @@ $buildLogProof = @(Assert-SeedForgeLog -Path $consoleLog -AllowedWarnings UE58Lo
 . (Join-Path $PSScriptRoot 'BuildCookRunStorageValidation.ps1')
 $cookLogs = @(Get-ChildItem -LiteralPath $uatDiagnosticRoot -File -Filter 'Cook-*.txt')
 if ($cookLogs.Count -ne 1) { throw 'BuildCookRun requires exactly one complete native Cook log.' }
-$buildStorageProof = @(Assert-SeedForgeRuntimeStorage -Path $cookLogs[0].FullName -ProjectRoot $projectRoot)
+$buildStorageProof = @(Assert-SeedForgeRuntimeStorage -Path $cookLogs[0].FullName -ProjectRoot $projectRoot `
+    -ExpectedExecutableDirectory (Join-Path $EngineRoot 'Engine/Binaries/Win64'))
 $pakStorageProof = Assert-SeedForgeBuildCookRunStorage -UatLog (Join-Path $uatDiagnosticRoot 'Log.txt') `
     -DiagnosticRoot $uatDiagnosticRoot -ProjectRoot $projectRoot -EngineRoot $EngineRoot `
     -ProcessStartedAtUtc $startedAtUtc -ProcessEndedAtUtc $uatEndedAtUtc
