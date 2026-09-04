@@ -74,21 +74,18 @@ Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'BuildCookRun UAT
         throw "BuildCookRun failed with exit code $LASTEXITCODE. See '$consoleLog'."
     }
 }
+$uatEndedAtUtc = [DateTimeOffset]::UtcNow
 . (Join-Path $PSScriptRoot 'LogValidation.ps1')
 $buildLogProof = @(Assert-SeedForgeLog -Path $consoleLog -AllowedWarnings UE58LocalEnvironment
     Get-ChildItem -LiteralPath $uatDiagnosticRoot -File -Recurse | Where-Object { $_.Extension -in @('.log','.txt') -and $_.Length -gt 0 } | ForEach-Object { Assert-SeedForgeLog -Path $_.FullName -AllowedWarnings UE58LocalEnvironment })
 . (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+. (Join-Path $PSScriptRoot 'BuildCookRunStorageValidation.ps1')
 $cookLogs = @(Get-ChildItem -LiteralPath $uatDiagnosticRoot -File -Filter 'Cook-*.txt')
-$pakLogs = @(Get-ChildItem -LiteralPath $uatDiagnosticRoot -File -Filter 'UnrealPak_*.txt')
-if ($cookLogs.Count -ne 1 -or $pakLogs.Count -ne 2 -or
-    @($pakLogs | Where-Object { $_.Name -like 'UnrealPak_CreateMultiplePaks-*' }).Count -ne 1 -or
-    @($pakLogs | Where-Object { $_.Name -like 'UnrealPak_CreateIoStoreContainers-*' }).Count -ne 1) {
-    throw 'BuildCookRun requires one Cook and the two complete native Pak/IoStore logs; unexpected scenarios are not accepted.'
-}
-$buildStorageProof = @(
-    $cookLogs | ForEach-Object { Assert-SeedForgeRuntimeStorage -Path $_.FullName -ProjectRoot $projectRoot }
-    $pakLogs | ForEach-Object { Assert-SeedForgeRuntimeStorage -Path $_.FullName -ProjectRoot $projectRoot -RequireDdc:$false }
-)
+if ($cookLogs.Count -ne 1) { throw 'BuildCookRun requires exactly one complete native Cook log.' }
+$buildStorageProof = @(Assert-SeedForgeRuntimeStorage -Path $cookLogs[0].FullName -ProjectRoot $projectRoot)
+$pakStorageProof = Assert-SeedForgeBuildCookRunStorage -UatLog (Join-Path $uatDiagnosticRoot 'Log.txt') `
+    -DiagnosticRoot $uatDiagnosticRoot -ProjectRoot $projectRoot -EngineRoot $EngineRoot `
+    -ProcessStartedAtUtc $startedAtUtc -ProcessEndedAtUtc $uatEndedAtUtc
 
 $executable = Join-Path $packageDir 'Windows/SeedForge.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
@@ -160,9 +157,11 @@ $manifest = [ordered]@{
     sha256 = $hash.Hash.ToLowerInvariant()
     result = 'Passed'
     startedAtUtc = $startedAtUtc.ToString('o')
+    uatEndedAtUtc = $uatEndedAtUtc.ToString('o')
     buildLogProof = $buildLogProof
     smokeLogProof = $smokeLogProof
     buildStorageProof = $buildStorageProof
+    pakStorageProof = $pakStorageProof
     smokeStorageProof = $smokeStorageProof
     consoleLog = $consoleLog
     diagnosticRoot = $uatDiagnosticRoot
