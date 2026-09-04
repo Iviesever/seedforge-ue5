@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$EngineRoot = 'D:\program\UnrealEngine\Epic Games\UE_5.8',
-    [ValidateSet('Grid', 'Encounter')][string]$Case = 'Grid',
+    [ValidateSet('Grid', 'Encounter', 'CapturePath', 'RenderUnavailable')][string]$Case = 'Grid',
     [int]$TimeoutSeconds = 45,
     [string]$Executable
 )
@@ -20,17 +20,26 @@ $logPath = Join-Path $runRoot 'runtime.log'
 $headBefore = (git -C $projectRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve test HEAD.' }
 $dirtyBefore = @(git -C $projectRoot status --porcelain=v1 --untracked-files=all).Count -ne 0
+$traceRevision = if ($dirtyBefore) { "diagnostic-$headBefore" } else { $headBefore }
 $prefix = @()
 if ([string]::IsNullOrWhiteSpace($Executable)) {
     $Executable = Join-Path $EngineRoot 'Engine\Binaries\Win64\UnrealEditor.exe'
     $prefix = @((Join-Path $projectRoot 'SeedForge.uproject'), '/Game/Maps/SeedForgeDemo', '-game')
 }
-$badArgument = if ($Case -eq 'Grid') { '-SeedForgeGridWidth=0' } else { '-SeedForgeRoomCount=1' }
-$expectedCode = if ($Case -eq 'Grid') { 'GenerationFailed' } else { 'EncounterFailed' }
-$arguments = $prefix + @('-nullrhi', '-unattended', '-nosplash', '-nosound', '-nop4',
-    '-SeedForgeGameplaySmoke', '-SeedForgeSeed=24301', $badArgument,
-    "-SeedForgeGitSha=$headBefore", "-SeedForgeGameplayTrace=$tracePath",
-    "-SeedForgeGameplayCaptureDir=$runRoot", "-userdir=$userRoot", "-abslog=$logPath")
+$expectedCode = switch ($Case) { 'Grid' { 'GenerationFailed' }; 'Encounter' { 'EncounterFailed' }; default { 'CaptureFailed' } }
+$captureDirectory = $runRoot
+if ($Case -eq 'CapturePath') {
+    $captureDirectory = Join-Path $runRoot 'blocked-capture-directory'
+    [IO.File]::WriteAllText($captureDirectory, 'Synthetic negative fixture: this file cannot be a capture directory.')
+}
+$arguments = $prefix + @('-unattended', '-nosplash', '-nosound', '-nop4',
+    '-SeedForgeGameplaySmoke', '-SeedForgeSeed=24301',
+    "-SeedForgeGitSha=$traceRevision", "-SeedForgeGameplayTrace=$tracePath",
+    "-SeedForgeGameplayCaptureDir=$captureDirectory", "-SeedForgeCaptureRoot=$runRoot", "-userdir=$userRoot", "-abslog=$logPath")
+if ($Case -eq 'CapturePath') { $arguments += @('-RenderOffscreen', '-windowed', '-ForceRes', '-ResX=1280', '-ResY=720') }
+else { $arguments += '-nullrhi' }
+if ($Case -eq 'Grid') { $arguments += '-SeedForgeGridWidth=0' }
+if ($Case -eq 'Encounter') { $arguments += '-SeedForgeRoomCount=1' }
 $started = Get-Date
 $process = Start-Process -FilePath $Executable -ArgumentList $arguments -PassThru -WindowStyle Hidden
 $timedOut = -not $process.WaitForExit($TimeoutSeconds * 1000)
@@ -39,7 +48,7 @@ $ended = Get-Date
 $headAfter = (git -C $projectRoot rev-parse HEAD).Trim()
 $observation = [ordered]@{
     case = $Case; startedAt = $started.ToString('o'); endedAt = $ended.ToString('o')
-    headBefore = $headBefore; headAfter = $headAfter; sourceTreeDirty = $dirtyBefore
+    headBefore = $headBefore; headAfter = $headAfter; sourceTreeDirty = $dirtyBefore; traceRevision = $traceRevision
     exitCode = $process.ExitCode; outerTimeout = $timedOut
     traceExists = Test-Path -LiteralPath $tracePath; trace = $tracePath; log = $logPath
 }
@@ -50,10 +59,16 @@ if ($process.ExitCode -ne 2) { throw "Expected failure exit 2, got $($process.Ex
 if (-not (Test-Path -LiteralPath $tracePath)) { throw 'No failed JSON trace was written.' }
 $trace = Get-Content -Raw -LiteralPath $tracePath | ConvertFrom-Json
 if ($trace.result -ne 'Failed' -or $trace.failureCode -ne $expectedCode) { throw 'Incorrect failure trace result/code.' }
-if ($trace.gitSha -ne $headBefore -or $trace.seed -ne '24301') { throw 'Failure trace identity mismatch.' }
+if ($trace.gitSha -ne $traceRevision -or $trace.seed -ne '24301') { throw 'Failure trace identity mismatch.' }
 if (@($trace.stateTransitions)[-1] -ne 'Failed') { throw 'Failure trace never entered Failed.' }
 if ($headBefore -ne $headAfter) { throw 'Test HEAD changed during process execution.' }
-if (Select-String -LiteralPath $logPath -Pattern 'Gameplay ready|SEEDFORGE_GAMEPLAY_SMOKE_SUCCESS' -Quiet) { throw 'Failed run incorrectly reported readiness/success.' }
+if (Select-String -LiteralPath $logPath -Pattern 'SEEDFORGE_GAMEPLAY_SMOKE_SUCCESS' -Quiet) { throw 'Failed run incorrectly reported success.' }
+if ($Case -in @('Grid', 'Encounter') -and (Select-String -LiteralPath $logPath -Pattern 'Gameplay ready' -Quiet)) { throw 'Pre-playing failure incorrectly reported readiness.' }
+if ($Case -in @('CapturePath', 'RenderUnavailable')) {
+    if (($trace.stateTransitions -join ',') -ne 'Generating,Playing,Failed') { throw 'Capture failure did not follow the production Playing-to-Failed path.' }
+    if (@($trace.captures).Count -ne 0 -or @($trace.screenshots).Count -ne 0) { throw 'Failed first capture published a successful receipt/path.' }
+    if ($trace.appliedRequestId -ne '0' -or $trace.layoutHash -ne '0' -or $trace.encounterHash -ne '0') { throw 'Capture failure retained a stale applied identity.' }
+}
 $failures = @(Select-String -LiteralPath $logPath -Pattern 'SEEDFORGE_GAMEPLAY_SMOKE_FAILURE code=')
 if ($failures.Count -ne 1) { throw "Expected one smoke failure completion, found $($failures.Count)." }
 Write-Host "Run failure contract passed: $Case, runtime exit 2, failed trace reparsed, no outer timeout."

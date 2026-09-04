@@ -13,6 +13,6 @@ public class SeedForgeRuntime : ModuleRules
             "Engine"
         });
 
-        PrivateDependencyModuleNames.Add("Json");
+        PrivateDependencyModuleNames.AddRange(new[] { "Json", "ImageCore", "Slate", "SlateCore" });
     }
 }

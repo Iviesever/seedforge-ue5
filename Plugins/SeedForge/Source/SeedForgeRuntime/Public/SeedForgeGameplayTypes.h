@@ -62,6 +62,12 @@ struct SEEDFORGERUNTIME_API FSeedForgeGameplaySnapshot
     FString FailureMessage;
 };
 
+class SEEDFORGERUNTIME_API FSeedForgeGameplayPresentation
+{
+public:
+    static FString BuildHudText(const FSeedForgeGameplaySnapshot& Snapshot);
+};
+
 class SEEDFORGERUNTIME_API FSeedForgeGameplayMath
 {
 public:

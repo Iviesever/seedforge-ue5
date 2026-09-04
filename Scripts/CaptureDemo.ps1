@@ -38,6 +38,7 @@ $arguments = @(
     '-ResY=720',
     "-SeedForgeSeed=$Seed",
     "-SeedForgeCapturePath=$capturePath",
+    "-SeedForgeCaptureRoot=$mediaRoot",
     '-unattended',
     '-nop4',
     '-nosplash',
@@ -46,6 +47,7 @@ $arguments = @(
     "-abslog=$logPath"
 )
 
+$captureStartedAtUtc = [DateTimeOffset]::UtcNow
 $process = Start-Process -FilePath $editor -ArgumentList $arguments -PassThru -WindowStyle Hidden
 if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
     $process.Kill($true)
@@ -57,11 +59,10 @@ if ($process.ExitCode -ne 0) {
 if (-not (Select-String -LiteralPath $logPath -Pattern 'Applied request=[1-9][0-9]* run=[1-9][0-9]* seed=[0-9]+ hash=[1-9][0-9]* floors=[1-9][0-9]* walls=[1-9][0-9]* gameplay=true\.$' -Quiet)) {
     throw "Demo capture log is missing the applied-layout marker. See '$logPath'."
 }
-if (-not (Test-Path -LiteralPath $capturePath)) {
-    throw "Demo screenshot was not created at '$capturePath'. See '$logPath'."
-}
-if ((Get-Item -LiteralPath $capturePath).Length -lt 10KB) {
-    throw "Demo screenshot is unexpectedly small. See '$capturePath' and '$logPath'."
+. (Join-Path $PSScriptRoot 'PngValidation.ps1')
+Assert-SeedForgePng -Path $capturePath -RunDirectory $mediaRoot -RequestedAtUtc $captureStartedAtUtc | Out-Null
+if (-not (Select-String -LiteralPath $logPath -Pattern 'Gameplay capture completed token=[0-9a-f]{32} label=single .*bindings=0\.' -Quiet)) {
+    throw 'Single capture has no clean native completion marker.'
 }
 
 Write-Host "Demo capture passed. Screenshot: $capturePath Log: $logPath"

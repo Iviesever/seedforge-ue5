@@ -14,7 +14,8 @@ public class SeedForgeTests : ModuleRules
             "InputCore",
             "SeedForgeEditor",
             "SeedForgeRuntime",
-            "Slate"
+            "Slate",
+            "SlateCore"
         });
     }
 }

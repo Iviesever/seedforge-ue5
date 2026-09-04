@@ -85,6 +85,7 @@ $smokeArguments = @(
     '-ResY=720',
     "-SeedForgeSeed=$SmokeSeed",
     "-SeedForgeCapturePath=$smokeCapture",
+    "-SeedForgeCaptureRoot=$mediaRoot",
     '-unattended',
     '-nosplash',
     '-nosound',
@@ -92,6 +93,7 @@ $smokeArguments = @(
     "-abslog=$smokeLog"
 )
 
+$captureStartedAtUtc = [DateTimeOffset]::UtcNow
 $process = Start-Process -FilePath $executable -ArgumentList $smokeArguments -PassThru -WindowStyle Hidden
 if (-not $process.WaitForExit($SmokeTimeoutSeconds * 1000)) {
     $process.Kill($true)
@@ -103,11 +105,10 @@ if ($process.ExitCode -ne 0) {
 if (-not (Select-String -LiteralPath $smokeLog -Pattern 'Applied request=[1-9][0-9]* run=[1-9][0-9]* seed=[0-9]+ hash=[1-9][0-9]* floors=[1-9][0-9]* walls=[1-9][0-9]* gameplay=true\.$' -Quiet)) {
     throw "Packaged demo log is missing the applied-layout marker. See '$smokeLog'."
 }
-if (-not (Test-Path -LiteralPath $smokeCapture)) {
-    throw "Packaged demo did not create '$smokeCapture'. See '$smokeLog'."
-}
-if ((Get-Item -LiteralPath $smokeCapture).Length -lt 10KB) {
-    throw "Packaged demo screenshot is unexpectedly small: '$smokeCapture'."
+. (Join-Path $PSScriptRoot 'PngValidation.ps1')
+$smokePngProof = Assert-SeedForgePng -Path $smokeCapture -RunDirectory $mediaRoot -RequestedAtUtc $captureStartedAtUtc
+if (-not (Select-String -LiteralPath $smokeLog -Pattern 'Gameplay capture completed token=[0-9a-f]{32} label=single .*bindings=0\.' -Quiet)) {
+    throw 'Packaged single capture has no clean native completion marker.'
 }
 
 $zipPath = Join-Path $releaseRoot "SeedForgeDemo-Win64-$version-$timestamp.zip"
@@ -124,6 +125,7 @@ $manifest = [ordered]@{
     executable = $executable
     smokeLog = $smokeLog
     smokeCapture = $smokeCapture
+    smokePngProof = $smokePngProof
     archive = $zipPath
     sha256 = $hash.Hash.ToLowerInvariant()
 }

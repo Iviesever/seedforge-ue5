@@ -5,6 +5,7 @@
 #include "Components/InputComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -16,6 +17,9 @@
 #include "SeedForgeGameplayTypes.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Styling/CoreStyle.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
 
 namespace SeedForge::GameplayActors::Private
 {
@@ -50,19 +54,6 @@ namespace SeedForge::GameplayActors::Private
         }
     }
 
-    const TCHAR* RunStateText(ESeedForgeRunState State)
-    {
-        switch (State)
-        {
-        case ESeedForgeRunState::Generating: return TEXT("GENERATING");
-        case ESeedForgeRunState::Playing: return TEXT("PLAYING");
-        case ESeedForgeRunState::Won: return TEXT("EXTRACTED - YOU WIN");
-        case ESeedForgeRunState::Lost: return TEXT("RUN LOST");
-        case ESeedForgeRunState::Restarting: return TEXT("RESTARTING");
-        case ESeedForgeRunState::Failed: return TEXT("RUN FAILED");
-        default: return TEXT("UNKNOWN");
-        }
-    }
 }
 
 ASeedForgePlayerCharacter::ASeedForgePlayerCharacter()
@@ -102,6 +93,8 @@ ASeedForgePlayerCharacter::ASeedForgePlayerCharacter()
     Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
     Camera->SetupAttachment(CameraArm, USpringArmComponent::SocketName);
     Camera->bUsePawnControlRotation = false;
+    Camera->PostProcessSettings.bOverride_MotionBlurAmount = true;
+    Camera->PostProcessSettings.MotionBlurAmount = 0.0f;
 }
 
 void ASeedForgePlayerCharacter::SetGameplayCoordinator(
@@ -491,49 +484,80 @@ FIntPoint ASeedForgeExitActor::GetSpawnCell() const
     return SpawnCell;
 }
 
+void ASeedForgeHUD::PostRender()
+{
+    // Base AHUD skips DrawHUD while hidden or showing debug information.
+    // Persistent Slate content must honor the same visibility boundary.
+    if (!bShowHUD || bShowDebugInfo || !GetWorld() || !Canvas)
+    {
+        RemoveOverlay();
+    }
+    Super::PostRender();
+}
+
 void ASeedForgeHUD::DrawHUD()
 {
-    Super::DrawHUD();
+    if (Canvas)
+    {
+        Super::DrawHUD();
+    }
+    UGameViewportClient* Viewport = GetWorld() ? GetWorld()->GetGameViewport() : nullptr;
+    if (!Viewport || !Viewport->GetGameViewportWidget().IsValid())
+    {
+        RemoveOverlay();
+        return;
+    }
     ASeedForgeGameplayCoordinator* Coordinator = nullptr;
     for (TActorIterator<ASeedForgeGameplayCoordinator> It(GetWorld()); It; ++It)
     {
         Coordinator = *It;
         break;
     }
-    if (!Coordinator || !Canvas)
+    if (!Coordinator)
     {
+        RemoveOverlay();
         return;
     }
-
-    const FSeedForgeGameplaySnapshot Snapshot = Coordinator->GetSnapshot();
-    UFont* Font = GEngine ? GEngine->GetMediumFont() : nullptr;
-    const FLinearColor TextColor = FLinearColor::White;
-    float Y = 32.0f;
-    auto Line = [this, Font, TextColor, &Y](const FString& Text, float Scale = 1.0f)
+    if (OverlayViewport.Get() != Viewport)
     {
-        DrawText(Text, TextColor, 32.0f, Y, Font, Scale, false);
-        Y += 28.0f * Scale;
-    };
-
-    Line(TEXT("SEEDFORGE // DETERMINISTIC EXTRACTION"), 1.15f);
-    Line(FString::Printf(TEXT("HP  %.0f / %.0f"), Snapshot.PlayerHealth, Snapshot.PlayerMaxHealth));
-    Line(FString::Printf(TEXT("DATA CORES  %d / %d"), Snapshot.CollectedCoreCount, Snapshot.RequiredCoreCount));
-    Line(FString::Printf(TEXT("SEED  %llu"), Snapshot.Seed));
-    Line(FString::Printf(TEXT("RUN  %s"), SeedForge::GameplayActors::Private::RunStateText(Snapshot.RunState)));
-    if (Snapshot.FailureCode != ESeedForgeRunFailureCode::None)
-    {
-        Line(FString::Printf(TEXT("FAILURE  %s: %s"),
-            LexToString(Snapshot.FailureCode), *Snapshot.FailureMessage), 0.7f);
+        RemoveOverlay();
     }
-    Line(Snapshot.bExitUnlocked ? TEXT("EXIT  UNLOCKED") : TEXT("EXIT  LOCKED"));
-    Y += 12.0f;
-    Line(TEXT("WASD Move   Mouse Aim   LMB Attack   Space Dash"), 0.82f);
-    Line(TEXT("R Restart Same Seed   N New Seed"), 0.82f);
-    if (Snapshot.RunState == ESeedForgeRunState::Won
-        || Snapshot.RunState == ESeedForgeRunState::Lost
-        || Snapshot.RunState == ESeedForgeRunState::Failed)
+    if (!Overlay.IsValid())
     {
-        Y += 18.0f;
-        Line(TEXT("Press R to replay this layout or N for a new run"), 1.0f);
+        Overlay = SNew(SBox)
+            .Tag(TEXT("SeedForgeHUD"))
+            .Visibility(EVisibility::HitTestInvisible)
+            .Padding(32.0f)
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Top)
+            [
+                SAssignNew(StatusText, STextBlock)
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 14))
+                .ColorAndOpacity(FLinearColor::White)
+                .ShadowColorAndOpacity(FLinearColor::Black)
+                .ShadowOffset(FVector2D(1.0, 1.0))
+                .WrapTextAt(440.0f)
+                .LineHeightPercentage(1.2f)
+            ];
+        OverlayViewport = Viewport;
+        Viewport->AddViewportWidgetContent(Overlay.ToSharedRef());
     }
+    StatusText->SetText(FText::FromString(FSeedForgeGameplayPresentation::BuildHudText(Coordinator->GetSnapshot())));
+}
+
+void ASeedForgeHUD::RemoveOverlay()
+{
+    if (Overlay.IsValid() && OverlayViewport.IsValid())
+    {
+        OverlayViewport->RemoveViewportWidgetContent(Overlay.ToSharedRef());
+    }
+    Overlay.Reset();
+    StatusText.Reset();
+    OverlayViewport.Reset();
+}
+
+void ASeedForgeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    RemoveOverlay();
+    Super::EndPlay(EndPlayReason);
 }

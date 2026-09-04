@@ -11,6 +11,9 @@ class ASeedForgeGameplayCoordinator;
 class UCameraComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
+class UGameViewportClient;
+class SWidget;
+class STextBlock;
 
 UCLASS()
 class SEEDFORGERUNTIME_API ASeedForgePlayerCharacter : public ACharacter
@@ -153,5 +156,15 @@ class SEEDFORGERUNTIME_API ASeedForgeHUD : public AHUD
     GENERATED_BODY()
 
 public:
+    virtual void PostRender() override;
     virtual void DrawHUD() override;
+
+protected:
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+private:
+    void RemoveOverlay();
+    TSharedPtr<SWidget> Overlay;
+    TSharedPtr<STextBlock> StatusText;
+    TWeakObjectPtr<UGameViewportClient> OverlayViewport;
 };

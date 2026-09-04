@@ -66,10 +66,12 @@ FString FSeedForgeGameplaySmokeCodec::ExportCanonicalJson(
     Json += TEXT(",\"engineVersion\":");
     AppendString(Json, Trace.EngineVersion);
     Json += FString::Printf(
-        TEXT(",\"seed\":\"%llu\",\"layoutHash\":\"%llu\",\"encounterHash\":\"%llu\","),
+        TEXT(",\"seed\":\"%llu\",\"layoutHash\":\"%llu\",\"encounterHash\":\"%llu\",\"runGeneration\":\"%llu\",\"appliedRequestId\":\"%llu\","),
         Trace.Seed,
         Trace.LayoutHash,
-        Trace.EncounterHash);
+        Trace.EncounterHash,
+        Trace.RunGeneration,
+        Trace.AppliedRequestId);
     Json += FString::Printf(
         TEXT("\"actorCounts\":{\"players\":%d,\"dataCores\":%d,\"enemies\":%d,\"exits\":%d},"),
         Trace.ActorCounts.Players,
@@ -82,6 +84,30 @@ FString FSeedForgeGameplaySmokeCodec::ExportCanonicalJson(
     AppendStringArray(Json, Trace.Actions);
     Json += TEXT(",\"screenshots\":");
     AppendStringArray(Json, Trace.ScreenshotPaths);
+    Json += TEXT(",\"captures\":[");
+    for (int32 Index = 0; Index < Trace.Captures.Num(); ++Index)
+    {
+        if (Index > 0) { Json += TEXT(","); }
+        const FSeedForgeCaptureReceipt& Capture = Trace.Captures[Index];
+        Json += TEXT("{\"token\":");
+        AppendString(Json, Capture.Request.Token.ToString(EGuidFormats::DigitsLower));
+        Json += TEXT(",\"label\":");
+        AppendString(Json, Capture.Request.Label);
+        Json += TEXT(",\"path\":");
+        AppendString(Json, Capture.Request.Path);
+        Json += FString::Printf(TEXT(",\"runGeneration\":\"%llu\",\"sourceRequestId\":\"%llu\""),
+            Capture.Request.RunGeneration, Capture.Request.SourceRequestId);
+        Json += TEXT(",\"requestedAtUtc\":");
+        AppendString(Json, Capture.Request.RequestedAtUtc.ToIso8601());
+        Json += TEXT(",\"completedAtUtc\":");
+        AppendString(Json, Capture.CompletedAtUtc.ToIso8601());
+        Json += FString::Printf(TEXT(",\"requestedFrame\":\"%llu\",\"renderedFrame\":\"%llu\",\"capturedFrame\":\"%llu\",\"completedFrame\":\"%llu\""),
+            Capture.Request.RequestedFrame, Capture.RenderedFrame, Capture.CapturedFrame, Capture.CompletedFrame);
+        Json += FString::Printf(TEXT(",\"width\":%d,\"height\":%d,\"fileBytes\":%lld,\"success\":%s"),
+            Capture.Request.Size.X, Capture.Request.Size.Y, Capture.FileBytes, Capture.bSuccess ? TEXT("true") : TEXT("false"));
+        Json += FString::Printf(TEXT(",\"remainingDelegateBindings\":%d}"), Capture.RemainingDelegateBindings);
+    }
+    Json += TEXT("]");
     Json += Trace.bSuccess ? TEXT(",\"result\":\"Passed\"") : TEXT(",\"result\":\"Failed\"");
     Json += TEXT(",\"failureCode\":");
     AppendString(Json, Trace.FailureCode);

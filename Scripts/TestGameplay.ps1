@@ -5,7 +5,8 @@ param(
     [int]$TimeoutSeconds = 180,
     [string]$Executable,
     [ValidateSet('editor', 'packaged')]
-    [string]$RunLabel = 'editor'
+    [string]$RunLabel = 'editor',
+    [switch]$AllowDirtyDiagnostic
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,7 +21,7 @@ $reportRoot = Join-Path $artifactRoot 'Reports\Gameplay'
 $mediaRoot = Join-Path $artifactRoot 'Media\Gameplay'
 $cacheRoot = Join-Path $projectRoot '.cache\DerivedDataCache'
 $userRoot = Join-Path $projectRoot ".user\GameplaySmoke-$RunLabel"
-$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$timestamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N')
 $runReportRoot = Join-Path $reportRoot $timestamp
 $runMediaRoot = Join-Path $mediaRoot $timestamp
 $tracePath = Join-Path $runReportRoot 'gameplay-smoke.json'
@@ -46,6 +47,13 @@ $revision = (git -C $projectRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $revision -notmatch '^[0-9a-f]{40}$') {
     throw 'Unable to resolve the exact source revision for gameplay smoke.'
 }
+$statusBefore = @(git -C $projectRoot status --porcelain=v1 --untracked-files=all)
+if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect gameplay source status.' }
+$sourceTreeDirty = $statusBefore.Count -ne 0
+if ($sourceTreeDirty -and -not $AllowDirtyDiagnostic) {
+    throw 'Gameplay verification requires a clean tree; use -AllowDirtyDiagnostic only for explicitly non-release development evidence.'
+}
+$traceRevision = if ($AllowDirtyDiagnostic) { "diagnostic-$revision" } else { $revision }
 
 $arguments = @($launchPrefixArguments) + @(
     '-game',
@@ -56,9 +64,10 @@ $arguments = @($launchPrefixArguments) + @(
     '-ResY=720',
     '-SeedForgeGameplaySmoke',
     "-SeedForgeSeed=$Seed",
-    "-SeedForgeGitSha=$revision",
+    "-SeedForgeGitSha=$traceRevision",
     "-SeedForgeGameplayTrace=$tracePath",
     "-SeedForgeGameplayCaptureDir=$runMediaRoot",
+    "-SeedForgeCaptureRoot=$runMediaRoot",
     '-unattended',
     '-nop4',
     '-nosplash',
@@ -67,6 +76,7 @@ $arguments = @($launchPrefixArguments) + @(
     "-abslog=$logPath"
 )
 
+$processStartedAtUtc = [DateTimeOffset]::UtcNow
 $process = Start-Process -FilePath $Executable -ArgumentList $arguments -PassThru -WindowStyle Hidden
 if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
     $process.Kill($true)
@@ -75,6 +85,7 @@ if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
 if ($process.ExitCode -ne 0) {
     throw "$RunLabel gameplay smoke failed with exit code $($process.ExitCode). See '$logPath'."
 }
+$processEndedAtUtc = [DateTimeOffset]::UtcNow
 if (-not (Test-Path -LiteralPath $tracePath)) {
     throw "$RunLabel gameplay smoke produced no JSON trace at '$tracePath'."
 }
@@ -82,15 +93,18 @@ if (-not (Select-String -LiteralPath $logPath -Pattern 'SEEDFORGE_GAMEPLAY_SMOKE
     throw "$RunLabel gameplay smoke log has no success marker. See '$logPath'."
 }
 
-$trace = Get-Content -Raw -LiteralPath $tracePath | ConvertFrom-Json
+$traceText = Get-Content -Raw -LiteralPath $tracePath
+$trace = if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) {
+    $traceText | ConvertFrom-Json -DateKind String
+} else { $traceText | ConvertFrom-Json }
 if ($trace.schema -ne 'seedforge.gameplay-smoke' -or [int]$trace.schemaVersion -ne 1) {
     throw 'Gameplay smoke trace has an unsupported schema.'
 }
 if ($trace.result -ne 'Passed' -or $trace.failureCode -ne '' -or $trace.failureMessage -ne '') {
     throw "Gameplay smoke trace reports failure: $($trace.failureCode) $($trace.failureMessage)"
 }
-if ($trace.gitSha -ne $revision) {
-    throw "Gameplay smoke trace revision '$($trace.gitSha)' does not match '$revision'."
+if ($trace.gitSha -ne $traceRevision) {
+    throw "Gameplay smoke trace revision '$($trace.gitSha)' does not match '$traceRevision'."
 }
 if ($trace.seed -ne $Seed.ToString([Globalization.CultureInfo]::InvariantCulture)) {
     throw "Gameplay smoke trace seed '$($trace.seed)' does not match '$Seed'."
@@ -116,20 +130,9 @@ if (@($actions | Where-Object { $_ -like 'Attack:Enemy:*' }).Count -ne 1 -or
     throw "Gameplay smoke trace does not prove attack/kill/3 Core/unlock/exit actions: $($actions -join ',')"
 }
 
-$projectPrefix = [IO.Path]::GetFullPath($projectRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-$screenshots = @($trace.screenshots)
-if ($screenshots.Count -lt 3) {
-    throw "Gameplay smoke created only $($screenshots.Count) screenshots; three are required."
-}
-foreach ($screenshot in $screenshots) {
-    $fullScreenshot = [IO.Path]::GetFullPath([string]$screenshot)
-    if (-not $fullScreenshot.StartsWith($projectPrefix, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Gameplay screenshot escaped the project boundary: '$fullScreenshot'."
-    }
-    if (-not (Test-Path -LiteralPath $fullScreenshot) -or (Get-Item -LiteralPath $fullScreenshot).Length -lt 10KB) {
-        throw "Gameplay screenshot is missing or too small: '$fullScreenshot'."
-    }
-}
+. (Join-Path $PSScriptRoot 'CaptureValidation.ps1')
+$validatedScreenshots = @(Assert-SeedForgeGameplayCaptures -Trace $trace -RunDirectory $runMediaRoot `
+    -ProcessStartedAtUtc $processStartedAtUtc -ProcessEndedAtUtc $processEndedAtUtc)
 
 $errorLines = @(Select-String -LiteralPath $logPath -Pattern ': Error:|Fatal error|ensure condition failed|LogSeedForge: Error')
 if ($errorLines.Count -ne 0) {
@@ -163,7 +166,12 @@ $summary = [ordered]@{
     completedAt = (Get-Date).ToString('o')
     runLabel = $RunLabel
     executable = $Executable
-    sourceRevision = $revision
+    sourceRevision = $traceRevision
+    baseRevision = $revision
+    sourceTreeDirty = $sourceTreeDirty
+    verificationKind = $(if ($AllowDirtyDiagnostic) { 'diagnostic' } else { 'clean-revision' })
+    processStartedAtUtc = $processStartedAtUtc.ToString('o')
+    processEndedAtUtc = $processEndedAtUtc.ToString('o')
     seed = $trace.seed
     layoutHash = $trace.layoutHash
     encounterHash = $trace.encounterHash
@@ -173,6 +181,9 @@ $summary = [ordered]@{
     actions = $trace.actions
     trace = $tracePath
     screenshots = $trace.screenshots
+    captures = $trace.captures
+    validatedScreenshots = $validatedScreenshots
+    visualReview = 'not-assessed-by-script'
     log = $logPath
     allowedWarningCount = @(Select-String -LiteralPath $logPath -Pattern ': Warning:').Count
     unexpectedWarningCount = 0

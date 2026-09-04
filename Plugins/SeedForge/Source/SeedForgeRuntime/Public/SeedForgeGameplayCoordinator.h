@@ -14,6 +14,7 @@ class ASeedForgeEnemyPawn;
 class ASeedForgeExitActor;
 class ASeedForgePlayerCharacter;
 class ASeedForgePreviewActor;
+class USeedForgeGameplayCaptureComponent;
 
 UCLASS()
 class SEEDFORGERUNTIME_API ASeedForgeGameplayCoordinator : public AActor
@@ -51,12 +52,13 @@ private:
         const TCHAR* SmokeCode = nullptr);
     void InitializeGameplaySmokeTrace();
     void CaptureScreenshot();
-    void ExitAfterCapture();
+    void HandleCaptureCompleted(const FSeedForgeCaptureReceipt& Receipt);
+    void HandleCaptureFailed(const FString& Error);
     void StartGameplaySmoke();
     void AdvanceGameplaySmoke();
+    void TeleportSmokePlayer(const FIntPoint& Cell);
     void GameplaySmokeWatchdog();
     void RequestSmokeScreenshot(const TCHAR* Label);
-    bool IsPendingSmokeScreenshotReady() const;
     void CompleteGameplaySmoke();
     void FailGameplaySmoke(const TCHAR* FailureCode, const FString& FailureMessage);
     bool WriteGameplaySmokeTrace();
@@ -65,7 +67,6 @@ private:
     enum class EGameplaySmokeStage : uint8
     {
         Disabled,
-        Warmup,
         WaitingStartCapture,
         PrepareCombat,
         Attack,
@@ -96,9 +97,8 @@ private:
     FDelegateHandle GenerationAppliedHandle;
     FTimerHandle InteractionTimer;
     FTimerHandle RepathTimer;
-    FTimerHandle CaptureTimer;
-    FTimerHandle CaptureExitTimer;
     FString CapturePath;
+    FString CaptureRoot;
     bool bGameplaySmokeMode = false;
     bool bSmokeExitRequested = false;
     EGameplaySmokeStage GameplaySmokeStage = EGameplaySmokeStage::Disabled;
@@ -107,10 +107,12 @@ private:
     FString GameplaySmokeTracePath;
     FString GameplaySmokeCaptureDirectory;
     FString GameplaySmokeGitSha;
-    FString PendingSmokeScreenshotPath;
     FSeedForgeGameplaySmokeTrace GameplaySmokeTrace;
     FTimerHandle GameplaySmokeTimer;
     FTimerHandle GameplaySmokeWatchdogTimer;
+
+    UPROPERTY()
+    TObjectPtr<USeedForgeGameplayCaptureComponent> CaptureComponent;
 
     UPROPERTY()
     TObjectPtr<ASeedForgePreviewActor> Visualization;

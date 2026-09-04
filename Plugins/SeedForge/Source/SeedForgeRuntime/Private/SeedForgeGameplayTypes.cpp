@@ -1,5 +1,36 @@
 #include "SeedForgeGameplayTypes.h"
 
+FString FSeedForgeGameplayPresentation::BuildHudText(const FSeedForgeGameplaySnapshot& Snapshot)
+{
+    const TCHAR* State = TEXT("UNKNOWN");
+    switch (Snapshot.RunState)
+    {
+    case ESeedForgeRunState::Generating: State = TEXT("GENERATING"); break;
+    case ESeedForgeRunState::Playing: State = TEXT("PLAYING"); break;
+    case ESeedForgeRunState::Won: State = TEXT("EXTRACTED - YOU WIN"); break;
+    case ESeedForgeRunState::Lost: State = TEXT("RUN LOST"); break;
+    case ESeedForgeRunState::Restarting: State = TEXT("RESTARTING"); break;
+    case ESeedForgeRunState::Failed: State = TEXT("RUN FAILED"); break;
+    default: break;
+    }
+    FString Text = FString::Printf(TEXT("SEEDFORGE // DETERMINISTIC EXTRACTION\n")
+        TEXT("HP  %.0f / %.0f\nDATA CORES  %d / %d\nSEED  %llu\nRUN  %s\n"),
+        Snapshot.PlayerHealth, Snapshot.PlayerMaxHealth, Snapshot.CollectedCoreCount,
+        Snapshot.RequiredCoreCount, Snapshot.Seed, State);
+    if (Snapshot.FailureCode != ESeedForgeRunFailureCode::None)
+    {
+        Text += FString::Printf(TEXT("FAILURE  %s: %s\n"), LexToString(Snapshot.FailureCode), *Snapshot.FailureMessage);
+    }
+    Text += Snapshot.bExitUnlocked ? TEXT("EXIT  UNLOCKED\n\n") : TEXT("EXIT  LOCKED\n\n");
+    Text += TEXT("WASD Move   Mouse Aim   LMB Attack   Space Dash\nR Restart Same Seed   N New Seed");
+    if (Snapshot.RunState == ESeedForgeRunState::Won || Snapshot.RunState == ESeedForgeRunState::Lost
+        || Snapshot.RunState == ESeedForgeRunState::Failed)
+    {
+        Text += TEXT("\n\nPress R to replay this layout or N for a new run");
+    }
+    return Text;
+}
+
 const TCHAR* LexToString(ESeedForgeRunFailureCode Code)
 {
     switch (Code)

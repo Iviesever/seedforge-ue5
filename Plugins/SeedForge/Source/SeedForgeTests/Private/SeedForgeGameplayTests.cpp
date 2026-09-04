@@ -6,8 +6,145 @@
 #include "SeedForgeGameplayCoordinator.h"
 #include "SeedForgeGameplayTypes.h"
 #include "SeedForgePreviewActor.h"
+#include "SeedForgeInputTestWorld.h"
+#include "Engine/Canvas.h"
+#include "Engine/GameViewportClient.h"
+#include "Widgets/SOverlay.h"
+#include "Widgets/SViewport.h"
+#include "Slate/SceneViewport.h"
+#include "CanvasTypes.h"
+#include "Camera/CameraComponent.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSeedForgePlayerCameraReadabilityTest,
+    "SeedForge.Gameplay.PlayerCameraReadability", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSeedForgePlayerCameraReadabilityTest::RunTest(const FString& Parameters)
+{
+    const UCameraComponent* Camera = GetDefault<ASeedForgePlayerCharacter>()->FindComponentByClass<UCameraComponent>();
+    TestNotNull(TEXT("Production player owns camera"), Camera);
+    if (!Camera) { return false; }
+    TestTrue(TEXT("Top-down camera explicitly overrides motion blur"), Camera->PostProcessSettings.bOverride_MotionBlurAmount);
+    TestEqual(TEXT("Rotating player remains readable without motion streaks"), Camera->PostProcessSettings.MotionBlurAmount, 0.0f);
+    TestTrue(TEXT("Camera postprocess settings are active"), Camera->PostProcessBlendWeight > 0.0f);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSeedForgeHudOwnershipTest,
+    "SeedForge.Gameplay.Hud.OverlayOwnership", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSeedForgeHudOwnershipTest::RunTest(const FString& Parameters)
+{
+    SeedForge::InputTests::FWorldFixture Fixture;
+    FWorldContext& Context = GEngine->GetWorldContextFromWorldChecked(Fixture.World);
+    UGameViewportClient* Previous = Context.GameViewport;
+    UGameViewportClient* Client = NewObject<UGameViewportClient>(GEngine);
+    Client->AddToRoot();
+    Context.GameViewport = Client;
+    const TSharedRef<SViewport> ViewportWidget = SNew(SViewport);
+    TSharedPtr<FSceneViewport> Viewport = FSceneViewport::Create(TStrongPtrVariant<FViewportClient>(Client), ViewportWidget);
+    TFunction<int32(const TSharedRef<SWidget>&)> CountHud = [&CountHud, this](const TSharedRef<SWidget>& Widget)
+    {
+        int32 Count = Widget->GetTag() == TEXT("SeedForgeHUD") ? 1 : 0;
+        if (Count == 1)
+        {
+            TestEqual(TEXT("HUD cannot consume input"), Widget->GetVisibility(), EVisibility::HitTestInvisible);
+        }
+        FChildren* Children = Widget->GetChildren();
+        for (int32 Index = 0; Index < Children->Num(); ++Index)
+        {
+            Count += CountHud(Children->GetChildAt(Index));
+        }
+        return Count;
+    };
+    ASeedForgeHUD* Hud = Fixture.World->SpawnActor<ASeedForgeHUD>();
+    Hud->DispatchBeginPlay();
+    UCanvas* TestCanvas = NewObject<UCanvas>(Hud);
+    FCanvas DrawCanvas(nullptr, nullptr, Fixture.World, Fixture.World->GetFeatureLevel());
+    TestCanvas->Canvas = &DrawCanvas;
+    Hud->SetCanvas(TestCanvas, TestCanvas);
+    Hud->DrawHUD();
+    TestEqual(TEXT("Real viewport overlay receives exactly one HUD"), CountHud(ViewportWidget), 1);
+    Hud->DrawHUD();
+    TestEqual(TEXT("Repeated draw does not duplicate overlay"), CountHud(ViewportWidget), 1);
+    Fixture.Coordinator->RestartSameSeed();
+    Hud->DrawHUD();
+    TestEqual(TEXT("Run restart keeps one HUD"), CountHud(ViewportWidget), 1);
+    Hud->bShowHUD = false;
+    Hud->PostRender();
+    TestEqual(TEXT("Standard hidden HUD removes persistent overlay"), CountHud(ViewportWidget), 0);
+    Hud->bShowHUD = true;
+    Hud->DrawHUD();
+    TestEqual(TEXT("HUD can show again exactly once"), CountHud(ViewportWidget), 1);
+    Hud->SetCanvas(TestCanvas, nullptr);
+    Hud->bShowDebugInfo = true;
+    Hud->PostRender();
+    TestEqual(TEXT("Debug-only mode removes gameplay overlay"), CountHud(ViewportWidget), 0);
+    Hud->bShowDebugInfo = false;
+    Hud->DrawHUD();
+    TestEqual(TEXT("HUD returns once after debug mode"), CountHud(ViewportWidget), 1);
+    Hud->Destroy(true);
+    TestEqual(TEXT("EndPlay removes owned overlay"), CountHud(ViewportWidget), 0);
+    TestCanvas->Canvas = nullptr;
+    Viewport.Reset();
+    Context.GameViewport = Previous;
+    Client->RemoveFromRoot();
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSeedForgeHudContentTest,
+    "SeedForge.Gameplay.Hud.Content", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSeedForgeHudContentTest::RunTest(const FString& Parameters)
+{
+    FSeedForgeGameplaySnapshot Snapshot;
+    Snapshot.Seed = MAX_uint64;
+    Snapshot.PlayerHealth = 80.0f;
+    Snapshot.PlayerMaxHealth = 100.0f;
+    Snapshot.CollectedCoreCount = 2;
+    Snapshot.RequiredCoreCount = 3;
+    Snapshot.RunState = ESeedForgeRunState::Playing;
+    const FString Text = FSeedForgeGameplayPresentation::BuildHudText(Snapshot);
+    TestTrue(TEXT("Title retained"), Text.Contains(TEXT("SEEDFORGE // DETERMINISTIC EXTRACTION")));
+    TestTrue(TEXT("HP is from snapshot"), Text.Contains(TEXT("HP  80 / 100")));
+    TestTrue(TEXT("Core progress is from snapshot"), Text.Contains(TEXT("DATA CORES  2 / 3")));
+    TestTrue(TEXT("Full uint64 seed is preserved"), Text.Contains(TEXT("SEED  18446744073709551615")));
+    TestTrue(TEXT("Lock state retained"), Text.Contains(TEXT("EXIT  LOCKED")));
+    TestTrue(TEXT("Movement and combat guidance retained"), Text.Contains(TEXT("WASD Move   Mouse Aim   LMB Attack   Space Dash")));
+    TestTrue(TEXT("Persistent restart controls retained"), Text.Contains(TEXT("R Restart Same Seed   N New Seed")));
+    TestFalse(TEXT("No invented failure"), Text.Contains(TEXT("FAILURE")));
+    Snapshot.bExitUnlocked = true;
+    TestTrue(TEXT("Unlocked exit reflects snapshot"), FSeedForgeGameplayPresentation::BuildHudText(Snapshot).Contains(TEXT("EXIT  UNLOCKED")));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSeedForgeHudStatesTest,
+    "SeedForge.Gameplay.Hud.States", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSeedForgeHudStatesTest::RunTest(const FString& Parameters)
+{
+    const ESeedForgeRunState States[] = {ESeedForgeRunState::Generating, ESeedForgeRunState::Playing,
+        ESeedForgeRunState::Won, ESeedForgeRunState::Lost, ESeedForgeRunState::Restarting, ESeedForgeRunState::Failed};
+    const TCHAR* Labels[] = {TEXT("GENERATING"), TEXT("PLAYING"), TEXT("EXTRACTED - YOU WIN"),
+        TEXT("RUN LOST"), TEXT("RESTARTING"), TEXT("RUN FAILED")};
+    for (int32 Index = 0; Index < UE_ARRAY_COUNT(States); ++Index)
+    {
+        FSeedForgeGameplaySnapshot Snapshot;
+        Snapshot.RunState = States[Index];
+        const FString Text = FSeedForgeGameplayPresentation::BuildHudText(Snapshot);
+        TestTrue(Labels[Index], Text.Contains(FString(TEXT("RUN  ")) + Labels[Index]));
+        const bool bTerminal = Index == 2 || Index == 3 || Index == 5;
+        TestEqual(TEXT("Replay hint is terminal only"), Text.Contains(TEXT("Press R to replay this layout or N for a new run")), bTerminal);
+    }
+    FSeedForgeGameplaySnapshot Failure;
+    Failure.RunState = ESeedForgeRunState::Failed;
+    Failure.FailureCode = ESeedForgeRunFailureCode::EncounterFailed;
+    Failure.FailureMessage = TEXT("Insufficient walkable cells");
+    TestTrue(TEXT("Typed failure includes details"), FSeedForgeGameplayPresentation::BuildHudText(Failure).Contains(
+        TEXT("FAILURE  EncounterFailed: Insufficient walkable cells")));
+    return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
     FSeedForgeGameplayCellMappingTest,
