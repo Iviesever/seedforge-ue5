@@ -7,6 +7,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerInput.h"
 #include "GameFramework/PlayerState.h"
+#include "GameFramework/WorldSettings.h"
 #include "InputKeyEventArgs.h"
 #include "SeedForgeGameplayActors.h"
 #include "SeedForgeGameplayCoordinator.h"
@@ -57,6 +58,10 @@ namespace SeedForge::InputTests
 
         ~FWorldFixture()
         {
+            if (World->HasBegunPlay())
+            {
+                World->EndPlay(EEndPlayReason::Quit);
+            }
             Coordinator->Destroy(true);
             Controller->Destroy(true);
             GEngine->ShutdownWorldNetDriver(World);
@@ -137,6 +142,28 @@ namespace SeedForge::InputTests
                 Count += bOwnedRunActor && !It->IsActorBeingDestroyed() ? 1 : 0;
             }
             return Count;
+        }
+
+        void BeginWorldTicks()
+        {
+            World->GetWorldSettings()->NotifyBeginPlay();
+        }
+
+        void TickWorld(float DeltaSeconds = 1.0f / 60.0f)
+        {
+            World->Tick(LEVELTICK_All, DeltaSeconds);
+        }
+
+        TArray<TWeakObjectPtr<AActor>> OwnedRunActors() const
+        {
+            TArray<TWeakObjectPtr<AActor>> Actors;
+            for (TActorIterator<AActor> It(World); It; ++It)
+            {
+                const bool bOwned = It->GetOwner() == Coordinator
+                    || (It->IsA<ASeedForgePlayerCharacter>() && It->GetOwner() == Controller);
+                if (bOwned && !It->IsActorBeingDestroyed()) { Actors.Emplace(*It); }
+            }
+            return Actors;
         }
     };
 }

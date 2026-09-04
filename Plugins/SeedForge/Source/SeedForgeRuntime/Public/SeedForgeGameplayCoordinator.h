@@ -5,6 +5,7 @@
 #include "SeedForgeAsync.h"
 #include "SeedForgeEncounter.h"
 #include "SeedForgeGameplayTypes.h"
+#include "SeedForgeGameplayDiagnostics.h"
 #include "SeedForgeGameplaySmoke.h"
 #include "SeedForgeRunState.h"
 #include "SeedForgeGameplayCoordinator.generated.h"
@@ -15,6 +16,13 @@ class ASeedForgeExitActor;
 class ASeedForgePlayerCharacter;
 class ASeedForgePreviewActor;
 class USeedForgeGameplayCaptureComponent;
+
+DECLARE_MULTICAST_DELEGATE_ThreeParams(FSeedForgeRunStateChanged,
+    ESeedForgeRunState, ESeedForgeRunState, const FSeedForgeGameplaySnapshot&);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FSeedForgeRunQueued,
+    ESeedForgeRunState, const FSeedForgeGameplaySnapshot&);
+DECLARE_MULTICAST_DELEGATE_SixParams(FSeedForgeEnemyPathApplied,
+    ASeedForgeEnemyPawn*, uint64, uint64, const FIntPoint&, const FIntPoint&, const FSeedForgePathResult&);
 
 UCLASS()
 class SEEDFORGERUNTIME_API ASeedForgeGameplayCoordinator : public AActor
@@ -31,6 +39,10 @@ public:
     bool TryPlayerAttack(const FVector& Origin, const FVector& Forward);
     bool ApplyPlayerDamage(float Damage);
     FSeedForgeGameplaySnapshot GetSnapshot() const;
+    FSeedForgeRunResourceSnapshot GetRunResourceSnapshot() const;
+    FSeedForgeRunStateChanged& OnRunStateChanged() { return RunStateChanged; }
+    FSeedForgeRunQueued& OnRunQueued() { return RunQueued; }
+    FSeedForgeEnemyPathApplied& OnEnemyPathApplied() { return EnemyPathApplied; }
     const FSeedForgeGameplayTuning& GetTuning() const;
     const FSeedForgeLayout& GetLayout() const;
     const FSeedForgeEncounterPlan& GetEncounterPlan() const;
@@ -42,6 +54,7 @@ protected:
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+    void NotifyRunStateChanged(ESeedForgeRunState PreviousState);
     bool ApplyGeneratedLayout(const FSeedForgeLayout& InLayout, uint64 SourceRequestId);
     void HandleGenerationApplied(const FSeedForgeAsyncCompletion& Completion);
     void ClearRunObjects();
@@ -85,6 +98,9 @@ private:
     FSeedForgeLayout Layout;
     FSeedForgeEncounterPlan EncounterPlan;
     FSeedForgeRunStateMachine RunState;
+    FSeedForgeRunStateChanged RunStateChanged;
+    FSeedForgeRunQueued RunQueued;
+    FSeedForgeEnemyPathApplied EnemyPathApplied;
     uint64 Seed = 24301;
     uint64 ActiveRequestId = 0;
     uint64 AppliedRequestId = 0;

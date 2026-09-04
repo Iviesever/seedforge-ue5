@@ -12,6 +12,7 @@
 #include "SeedForgeGameplayActors.h"
 #include "SeedForgeGameplayCapture.h"
 #include "SeedForgeGridPathfinder.h"
+#include "SeedForgeInputSelfTest.h"
 #include "SeedForgePreviewActor.h"
 #include "SeedForgeRuntime.h"
 #include "SeedForgeValidator.h"
@@ -47,6 +48,7 @@ ASeedForgeGameplayCoordinator::ASeedForgeGameplayCoordinator()
 uint64 ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
 {
     check(IsInGameThread());
+    const ESeedForgeRunState StateBefore = RunState.GetState();
     ++RunGeneration;
     Seed = InSeed;
     ActiveRequestId = 0;
@@ -59,17 +61,24 @@ uint64 ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
 
     if (RunState.GetState() == ESeedForgeRunState::Restarting)
     {
-        RunState.BeginGenerating();
+        if (RunState.BeginGenerating().IsSuccess()) { NotifyRunStateChanged(StateBefore); }
     }
     else if (RunState.GetState() != ESeedForgeRunState::Generating)
     {
-        if (!RunState.RequestRestart().IsSuccess()
-            || !RunState.BeginGenerating().IsSuccess())
+        if (!RunState.RequestRestart().IsSuccess())
         {
             EnterRunFailure(ESeedForgeRunFailureCode::StartStateFailed,
                 TEXT("Run state rejected restart before generation."));
             return 0;
         }
+        NotifyRunStateChanged(StateBefore);
+        if (!RunState.BeginGenerating().IsSuccess())
+        {
+            EnterRunFailure(ESeedForgeRunFailureCode::StartStateFailed,
+                TEXT("Run state rejected restart before generation."));
+            return 0;
+        }
+        NotifyRunStateChanged(ESeedForgeRunState::Restarting);
     }
 
     if (UWorld* World = GetWorld())
@@ -116,6 +125,11 @@ uint64 ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
         RunGeneration,
         ActiveRequestId,
         Seed);
+    if (RunQueued.IsBound())
+    {
+        const FSeedForgeGameplaySnapshot Snapshot = GetSnapshot();
+        RunQueued.Broadcast(StateBefore, Snapshot);
+    }
     return ActiveRequestId;
 }
 
@@ -312,6 +326,7 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(
         Layout.CanonicalHash,
         Visualization->GetFloorInstanceCount(),
         Visualization->GetWallInstanceCount());
+    NotifyRunStateChanged(ESeedForgeRunState::Generating);
     if (bGameplaySmokeMode)
     {
         StartGameplaySmoke();
@@ -413,6 +428,7 @@ bool ASeedForgeGameplayCoordinator::ApplyPlayerDamage(float Damage)
         }
         UE_LOG(LogSeedForge, Display, TEXT("Gameplay state transition Playing->Lost."));
         EnterTerminalState();
+        NotifyRunStateChanged(ESeedForgeRunState::Playing);
     }
     return true;
 }
@@ -435,6 +451,29 @@ FSeedForgeGameplaySnapshot ASeedForgeGameplayCoordinator::GetSnapshot() const
     Snapshot.FailureCode = RunFailureCode;
     Snapshot.FailureMessage = RunFailureMessage;
     return Snapshot;
+}
+
+FSeedForgeRunResourceSnapshot ASeedForgeGameplayCoordinator::GetRunResourceSnapshot() const
+{
+    FSeedForgeRunResourceSnapshot Snapshot;
+    if (const UWorld* World = GetWorld())
+    {
+        const FTimerManager& Timers = World->GetTimerManager();
+        Snapshot.bInteractionTimerActive = Timers.IsTimerActive(InteractionTimer);
+        Snapshot.bRepathTimerActive = Timers.IsTimerActive(RepathTimer);
+        Snapshot.AttackCooldownRemaining = FMath::Max(0.0, NextAttackTime - World->GetTimeSeconds());
+    }
+    return Snapshot;
+}
+
+void ASeedForgeGameplayCoordinator::NotifyRunStateChanged(ESeedForgeRunState PreviousState)
+{
+    if (PreviousState != RunState.GetState() && RunStateChanged.IsBound())
+    {
+        // Publish a value snapshot, never a mutable gameplay-state reference.
+        const FSeedForgeGameplaySnapshot Snapshot = GetSnapshot();
+        RunStateChanged.Broadcast(PreviousState, Snapshot.RunState, Snapshot);
+    }
 }
 
 const FSeedForgeGameplayTuning& ASeedForgeGameplayCoordinator::GetTuning() const
@@ -475,6 +514,14 @@ int32 ASeedForgeGameplayCoordinator::GetLiveEnemyActorCount() const
 void ASeedForgeGameplayCoordinator::BeginPlay()
 {
     Super::BeginPlay();
+    if (FParse::Param(FCommandLine::Get(), TEXT("SeedForgeInputSelfTest")))
+    {
+        FSeedForgeInputSelfTestOptions Options;
+        FString Error;
+        // The persistent controller owns reporting invalid input-test options.
+        // Do not start a second smoke/capture driver when those options conflict.
+        if (!FSeedForgeInputSelfTestCodec::ParseOptions(FCommandLine::Get(), Options, Error)) { return; }
+    }
     CaptureComponent->OnCompleted.AddUObject(this, &ASeedForgeGameplayCoordinator::HandleCaptureCompleted);
     CaptureComponent->OnFailed.AddUObject(this, &ASeedForgeGameplayCoordinator::HandleCaptureFailed);
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeSeed="), Seed);
@@ -641,6 +688,7 @@ void ASeedForgeGameplayCoordinator::TickInteractions()
             {
                 UE_LOG(LogSeedForge, Display, TEXT("Gameplay state transition Playing->Won."));
                 EnterTerminalState();
+                NotifyRunStateChanged(ESeedForgeRunState::Playing);
                 return;
             }
         }
@@ -725,6 +773,7 @@ void ASeedForgeGameplayCoordinator::ReplanEnemies()
                 SeedForge::GameplayCoordinator::Private::EnemyHeight));
         }
         Enemy->SetPath(MoveTemp(WorldPath));
+        EnemyPathApplied.Broadcast(Enemy, RunGeneration, AppliedRequestId, Request.Start, Request.Goal, PathResult);
     }
 }
 
@@ -749,6 +798,7 @@ void ASeedForgeGameplayCoordinator::EnterRunFailure(
     {
         return;
     }
+    const ESeedForgeRunState StateBefore = RunState.GetState();
     ActiveRequestId = 0;
     AppliedRequestId = 0;
     if (UWorld* World = GetWorld())
@@ -769,6 +819,7 @@ void ASeedForgeGameplayCoordinator::EnterRunFailure(
     RunState.FailRun();
     RunFailureCode = Code;
     RunFailureMessage = Message;
+    NotifyRunStateChanged(StateBefore);
     UE_LOG(LogSeedForge, Error, TEXT("Gameplay run failed code=%s message=%s"),
         LexToString(Code), *Message);
     if (bGameplaySmokeMode)

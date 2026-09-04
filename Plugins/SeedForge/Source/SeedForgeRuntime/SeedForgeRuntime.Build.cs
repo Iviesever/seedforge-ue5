@@ -10,9 +10,10 @@ public class SeedForgeRuntime : ModuleRules
         {
             "Core",
             "CoreUObject",
-            "Engine"
+            "Engine",
+            "InputCore"
         });
 
-        PrivateDependencyModuleNames.AddRange(new[] { "Json", "ImageCore", "Slate", "SlateCore" });
+        PrivateDependencyModuleNames.AddRange(new[] { "Json", "ImageCore", "Slate", "SlateCore", "ApplicationCore" });
     }
 }

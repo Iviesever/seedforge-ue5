@@ -15,6 +15,15 @@
 #include "Materials/MaterialInterface.h"
 #include "SeedForgeGameplayCoordinator.h"
 #include "SeedForgeGameplayTypes.h"
+#include "SeedForgeInputSelfTest.h"
+#include "SeedForgeRuntime.h"
+#include "HAL/PlatformFileManager.h"
+#include "HAL/FileManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
+#include "Misc/Paths.h"
+#include "Misc/EngineVersion.h"
 #include "TimerManager.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Styling/CoreStyle.h"
@@ -140,6 +149,12 @@ float ASeedForgePlayerCharacter::GetAttackCooldownSeconds() const
 float ASeedForgePlayerCharacter::GetDashCooldownSeconds() const
 {
     return FSeedForgeGameplayTuning().DashCooldownSeconds;
+}
+
+double ASeedForgePlayerCharacter::GetDashCooldownRemaining() const
+{
+    const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+    return FMath::Max(0.0, NextDashTime - Now);
 }
 
 void ASeedForgePlayerCharacter::ShowAttackPulse()
@@ -312,6 +327,12 @@ void ASeedForgePlayerController::StartNewSeed()
 
 void ASeedForgePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+    if (InputSelfTestComponent)
+    {
+        InputSelfTestComponent->OnFinished().Remove(InputSelfTestFinishedHandle);
+        InputSelfTestFinishedHandle.Reset();
+        InputSelfTestComponent->Cancel();
+    }
     GameplayCoordinator.Reset();
     Super::EndPlay(EndPlayReason);
 }
@@ -323,6 +344,94 @@ void ASeedForgePlayerController::BeginPlay()
     InputMode.SetHideCursorDuringCapture(false);
     InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
     SetInputMode(InputMode);
+    if (FParse::Param(FCommandLine::Get(), TEXT("SeedForgeInputSelfTest"))) { BeginInputSelfTest(); }
+}
+
+void ASeedForgePlayerController::PreProcessInput(float DeltaTime, bool bGamePaused)
+{
+    Super::PreProcessInput(DeltaTime, bGamePaused);
+    if (InputSelfTestComponent) { InputSelfTestComponent->BeforeInput(DeltaTime, bGamePaused); }
+}
+
+void ASeedForgePlayerController::PostProcessInput(float DeltaTime, bool bGamePaused)
+{
+    Super::PostProcessInput(DeltaTime, bGamePaused);
+    if (InputSelfTestComponent) { InputSelfTestComponent->AfterInput(DeltaTime, bGamePaused); }
+}
+
+void ASeedForgePlayerController::BeginInputSelfTest()
+{
+    FSeedForgeInputSelfTestOptions Options;
+    FString Error;
+    const bool bValid = FSeedForgeInputSelfTestCodec::ParseOptions(FCommandLine::Get(), Options, Error);
+    InputSelfTestTracePath = Options.TracePath;
+    if (!bValid)
+    {
+        FSeedForgeInputSelfTestTrace Failure;
+        Failure.SourceIdentity = Options.SourceIdentity.Left(128);
+        Failure.ExpectedInitialSeed = Options.Seed;
+        Failure.EngineVersion = FEngineVersion::Current().ToString();
+        Failure.StartedAtUtc = Failure.CompletedAtUtc = FDateTime::UtcNow();
+        Failure.StartedFrame = Failure.CompletedFrame = GFrameCounter;
+        Failure.CompletionCount = 1;
+        Failure.FailureCode = ESeedForgeInputSelfTestFailure::InvalidArguments;
+        if (!FSeedForgeInputSelfTestCodec::ParseSourceIdentity(Options.SourceIdentity, Failure.SourceKind, Failure.SourceRevision))
+        {
+            Failure.FailureCode = ESeedForgeInputSelfTestFailure::InvalidSourceIdentity;
+        }
+        Failure.FailureMessage = Error;
+        HandleInputSelfTestFinished(Failure);
+        return;
+    }
+    InputSelfTestComponent = NewObject<USeedForgeInputSelfTestComponent>(this, TEXT("InputSelfTest"));
+    AddInstanceComponent(InputSelfTestComponent);
+    InputSelfTestComponent->RegisterComponent();
+    InputSelfTestFinishedHandle = InputSelfTestComponent->OnFinished().AddUObject(
+        this, &ASeedForgePlayerController::HandleInputSelfTestFinished);
+    InputSelfTestComponent->Start(Options.SourceIdentity, Options.Seed);
+}
+
+void ASeedForgePlayerController::HandleInputSelfTestFinished(const FSeedForgeInputSelfTestTrace& Trace)
+{
+    if (bInputSelfTestExitRequested) { return; }
+    bInputSelfTestExitRequested = true;
+    if (InputSelfTestComponent)
+    {
+        InputSelfTestComponent->OnFinished().Remove(InputSelfTestFinishedHandle);
+        InputSelfTestFinishedHandle.Reset();
+        InputSelfTestComponent->Cancel();
+    }
+    FString ValidationError;
+    const bool bPassed = Trace.bSuccess && FSeedForgeInputSelfTestCodec::ValidateEvidence(Trace, ValidationError);
+    bool bWritten = false;
+    const bool bUsablePath = !InputSelfTestTracePath.IsEmpty() && !FPaths::IsRelative(InputSelfTestTracePath)
+        && FPaths::GetExtension(InputSelfTestTracePath).Equals(TEXT("json"), ESearchCase::IgnoreCase);
+    if (bUsablePath)
+    {
+        InputSelfTestTracePath = FPaths::ConvertRelativePathToFull(InputSelfTestTracePath);
+        FPaths::MakeStandardFilename(InputSelfTestTracePath);
+        IPlatformFile& Files = FPlatformFileManager::Get().GetPlatformFile();
+        if (!Files.FileExists(*InputSelfTestTracePath)
+            && Files.CreateDirectoryTree(*FPaths::GetPath(InputSelfTestTracePath)))
+        {
+            const FString Json = FSeedForgeInputSelfTestCodec::ExportCanonicalJson(Trace) + LINE_TERMINATOR;
+            bWritten = FFileHelper::SaveStringToFile(Json, *InputSelfTestTracePath,
+                FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_NoReplaceExisting);
+        }
+    }
+    if (bPassed && bWritten)
+    {
+        UE_LOG(LogSeedForge, Display, TEXT("SEEDFORGE_INPUT_SELFTEST_SUCCESS source=%s trace=%s written=true"),
+            *Trace.SourceIdentity.Left(128), *InputSelfTestTracePath);
+        FPlatformMisc::RequestExitWithStatus(false, 0);
+        return;
+    }
+    const ESeedForgeInputSelfTestFailure Code = !bWritten ? ESeedForgeInputSelfTestFailure::TraceWriteFailed
+        : (Trace.bSuccess ? ESeedForgeInputSelfTestFailure::MissingInputEvidence : Trace.FailureCode);
+    UE_LOG(LogSeedForge, Error, TEXT("SEEDFORGE_INPUT_SELFTEST_FAILURE code=%s source=%s trace=%s written=%s"),
+        LexToString(Code), *Trace.SourceIdentity.Left(128), *InputSelfTestTracePath, bWritten ? TEXT("true") : TEXT("false"));
+    // Save synchronously, then preserve exit 2 even before the first Editor frame.
+    FPlatformMisc::RequestExitWithStatus(true, 2);
 }
 
 void ASeedForgePlayerController::PlayerTick(float DeltaTime)
@@ -367,12 +476,22 @@ void ASeedForgeEnemyPawn::Tick(float DeltaSeconds)
         return;
     }
     const FVector Target = WorldPath[PathIndex];
+    const FVector From = GetActorLocation();
+    const int32 ConsumedIndex = PathIndex;
     const FVector Next = FMath::VInterpConstantTo(
-        GetActorLocation(),
+        From,
         Target,
         DeltaSeconds,
         FSeedForgeGameplayTuning().EnemyMoveSpeed);
     SetActorLocation(Next, false);
+    LastMove.Sequence = ++MovementSequence;
+    LastMove.Frame = GFrameCounter;
+    LastMove.PathRevision = PathRevision;
+    LastMove.WaypointIndex = ConsumedIndex;
+    LastMove.From = From;
+    LastMove.Target = Target;
+    LastMove.To = GetActorLocation();
+    LastMove.DeltaSeconds = DeltaSeconds;
     FVector Facing = Target - GetActorLocation();
     Facing.Z = 0.0;
     if (!Facing.IsNearlyZero())
@@ -399,12 +518,16 @@ void ASeedForgeEnemyPawn::SetPath(TArray<FVector> InWorldPath)
 {
     WorldPath = MoveTemp(InWorldPath);
     PathIndex = 0;
+    ++PathRevision;
+    LastMove = {};
 }
 
 void ASeedForgeEnemyPawn::ClearPath()
 {
     WorldPath.Reset();
     PathIndex = 0;
+    ++PathRevision;
+    LastMove = {};
 }
 
 uint32 ASeedForgeEnemyPawn::GetStableId() const
@@ -415,6 +538,17 @@ uint32 ASeedForgeEnemyPawn::GetStableId() const
 FIntPoint ASeedForgeEnemyPawn::GetSpawnCell() const
 {
     return SpawnCell;
+}
+
+FSeedForgeEnemyPathSnapshot ASeedForgeEnemyPawn::GetPathSnapshot() const
+{
+    FSeedForgeEnemyPathSnapshot Snapshot;
+    Snapshot.Revision = PathRevision;
+    Snapshot.NextWaypointIndex = PathIndex;
+    // Refuse oversized diagnostic copies without altering the production path.
+    if (WorldPath.Num() < FSeedForgeEnemyPathProof::MaxPathCells) { Snapshot.Waypoints = WorldPath; }
+    Snapshot.LastMove = LastMove;
+    return Snapshot;
 }
 
 ASeedForgeCorePickup::ASeedForgeCorePickup()

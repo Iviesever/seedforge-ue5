@@ -5,6 +5,7 @@
 #include "GameFramework/HUD.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
+#include "SeedForgeGameplayDiagnostics.h"
 #include "SeedForgeGameplayActors.generated.h"
 
 class ASeedForgeGameplayCoordinator;
@@ -12,6 +13,8 @@ class UCameraComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
 class UGameViewportClient;
+class USeedForgeInputSelfTestComponent;
+struct FSeedForgeInputSelfTestTrace;
 class SWidget;
 class STextBlock;
 
@@ -29,6 +32,7 @@ public:
     bool HasTopDownCamera() const;
     float GetAttackCooldownSeconds() const;
     float GetDashCooldownSeconds() const;
+    double GetDashCooldownRemaining() const;
     void ShowAttackPulse();
     void ResetMovementIntent();
     virtual void PawnClientRestart() override;
@@ -76,14 +80,23 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void PlayerTick(float DeltaTime) override;
+    virtual void PreProcessInput(float DeltaTime, bool bGamePaused) override;
+    virtual void PostProcessInput(float DeltaTime, bool bGamePaused) override;
     virtual void SetupInputComponent() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
     void RestartSameSeed();
+    void BeginInputSelfTest();
+    void HandleInputSelfTestFinished(const FSeedForgeInputSelfTestTrace& Trace);
     void StartNewSeed();
     ASeedForgeGameplayCoordinator* ResolveGameplayCoordinator();
     TWeakObjectPtr<ASeedForgeGameplayCoordinator> GameplayCoordinator;
+    UPROPERTY()
+    TObjectPtr<USeedForgeInputSelfTestComponent> InputSelfTestComponent;
+    FString InputSelfTestTracePath;
+    FDelegateHandle InputSelfTestFinishedHandle;
+    bool bInputSelfTestExitRequested = false;
 };
 
 UCLASS()
@@ -100,6 +113,7 @@ public:
     void ClearPath();
     uint32 GetStableId() const;
     FIntPoint GetSpawnCell() const;
+    FSeedForgeEnemyPathSnapshot GetPathSnapshot() const;
 
 private:
     UPROPERTY(VisibleAnywhere, Category = "SeedForge")
@@ -109,6 +123,9 @@ private:
     FIntPoint SpawnCell = FIntPoint::ZeroValue;
     TArray<FVector> WorldPath;
     int32 PathIndex = 0;
+    uint64 PathRevision = 0;
+    uint64 MovementSequence = 0;
+    FSeedForgeEnemyMoveObservation LastMove;
 };
 
 UCLASS()
