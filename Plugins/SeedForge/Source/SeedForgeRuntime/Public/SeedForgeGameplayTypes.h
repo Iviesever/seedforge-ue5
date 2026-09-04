@@ -30,6 +30,20 @@ struct SEEDFORGERUNTIME_API FSeedForgeAttackCandidate
     bool bAlive = true;
 };
 
+enum class ESeedForgeRunFailureCode : uint8
+{
+    None,
+    MissingWorldSubsystem,
+    GenerationFailed,
+    InvalidLayout,
+    EncounterFailed,
+    SpawnFailed,
+    StartStateFailed,
+    SmokeFailed
+};
+
+SEEDFORGERUNTIME_API const TCHAR* LexToString(ESeedForgeRunFailureCode Code);
+
 struct SEEDFORGERUNTIME_API FSeedForgeGameplaySnapshot
 {
     uint64 Seed = 0;
@@ -41,6 +55,8 @@ struct SEEDFORGERUNTIME_API FSeedForgeGameplaySnapshot
     int32 CollectedCoreCount = 0;
     int32 RequiredCoreCount = 0;
     bool bExitUnlocked = false;
+    ESeedForgeRunFailureCode FailureCode = ESeedForgeRunFailureCode::None;
+    FString FailureMessage;
 };
 
 class SEEDFORGERUNTIME_API FSeedForgeGameplayMath

@@ -1,5 +1,21 @@
 #include "SeedForgeGameplayTypes.h"
 
+const TCHAR* LexToString(ESeedForgeRunFailureCode Code)
+{
+    switch (Code)
+    {
+    case ESeedForgeRunFailureCode::None: return TEXT("None");
+    case ESeedForgeRunFailureCode::MissingWorldSubsystem: return TEXT("MissingWorldSubsystem");
+    case ESeedForgeRunFailureCode::GenerationFailed: return TEXT("GenerationFailed");
+    case ESeedForgeRunFailureCode::InvalidLayout: return TEXT("InvalidLayout");
+    case ESeedForgeRunFailureCode::EncounterFailed: return TEXT("EncounterFailed");
+    case ESeedForgeRunFailureCode::SpawnFailed: return TEXT("SpawnFailed");
+    case ESeedForgeRunFailureCode::StartStateFailed: return TEXT("StartStateFailed");
+    case ESeedForgeRunFailureCode::SmokeFailed: return TEXT("SmokeFailed");
+    default: return TEXT("Unknown");
+    }
+}
+
 FVector FSeedForgeGameplayMath::CellToWorld(
     const FIntPoint& Cell,
     float CellSize,

@@ -23,7 +23,7 @@ class SEEDFORGERUNTIME_API ASeedForgeGameplayCoordinator : public AActor
 public:
     ASeedForgeGameplayCoordinator();
 
-    void StartRun(uint64 InSeed);
+    uint64 StartRun(uint64 InSeed);
     bool ApplyGeneratedLayout(const FSeedForgeLayout& InLayout);
     void RestartSameSeed();
     void StartNewSeed();
@@ -46,6 +46,9 @@ private:
     void TickInteractions();
     void ReplanEnemies();
     void EnterTerminalState();
+    void EnterRunFailure(ESeedForgeRunFailureCode Code, const FString& Message,
+        const TCHAR* SmokeCode = nullptr);
+    void InitializeGameplaySmokeTrace();
     void CaptureScreenshot();
     void ExitAfterCapture();
     void StartGameplaySmoke();
@@ -86,6 +89,8 @@ private:
     float PlayerHealth = 0.0f;
     double NextAttackTime = 0.0;
     double NextContactDamageTime = 0.0;
+    ESeedForgeRunFailureCode RunFailureCode = ESeedForgeRunFailureCode::None;
+    FString RunFailureMessage;
     FDelegateHandle GenerationAppliedHandle;
     FTimerHandle InteractionTimer;
     FTimerHandle RepathTimer;
@@ -93,6 +98,7 @@ private:
     FTimerHandle CaptureExitTimer;
     FString CapturePath;
     bool bGameplaySmokeMode = false;
+    bool bSmokeExitRequested = false;
     EGameplaySmokeStage GameplaySmokeStage = EGameplaySmokeStage::Disabled;
     int32 GameplaySmokeCoreIndex = 0;
     double GameplaySmokeStageDeadline = 0.0;

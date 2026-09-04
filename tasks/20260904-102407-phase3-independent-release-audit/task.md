@@ -38,7 +38,7 @@
 - Initialize smoke identity and arm its deadline before generation; request non-zero exit once after serializing pre-Playing failure. Actual process exit is verified with a subprocess, not mocked.
 - Task B owns persistent R/N dispatch; task A verifies coordinator/state recovery and leaves that dependency explicit.
 
-- [ ] **Step A1 — write RED tests against real production boundaries.**
+- [x] **Step A1 — write RED tests against real production boundaries.**
 
 ```cpp
 const uint64 Current = Coordinator->StartRun(24301);
@@ -54,7 +54,7 @@ TestEqual(TEXT("No partial Core actors"), Coordinator->GetLiveCoreActorCount(), 
 
 Also test invalid-layout direct apply, destroyed-on-spawn Core rollback through the World actor-spawn delegate, stale failed completion while a newer request is active, duplicate failure idempotence, pure failure/restart transitions, and recovery to successful apply. Match expected error logs narrowly rather than silencing warnings.
 
-- [ ] **Step A2 — compile declarations/stubs and observe RED.**
+- [x] **Step A2 — compile declarations/stubs and observe RED.**
 
 ```powershell
 .\Scripts\Build.ps1
@@ -63,7 +63,7 @@ Also test invalid-layout direct apply, destroyed-on-spawn Core rollback through 
 
 Expected: test assertions fail for retained Generating/partial objects/missing failure detail, not a compile typo. Independently launch invalid-grid smoke with valid output arguments and require a failed trace plus exit 2; at the old behavior it reaches the bounded external timeout without a trace.
 
-- [ ] **Step A3 — implement the centralized minimal GREEN path.**
+- [x] **Step A3 — implement the centralized minimal GREEN path.**
 
 ```cpp
 if (ActiveRequestId == 0 || Completion.RequestId != ActiveRequestId)
@@ -82,7 +82,7 @@ ApplyGeneratedLayout(Completion.Result.Layout);
 
 The failure boundary cancels active generation, cleans owned actors/timers/path/capture state, clears failure-sensitive identity/HP/cooldowns, calls `RunState.FailRun()`, records typed details, and (for smoke) writes one failed JSON trace and requests exit 2 once. Rebind the coordinator generation delegate when recovering; leave stale request suppression intact.
 
-- [ ] **Step A4 — rerun focused and relevant regression.**
+- [x] **Step A4 — rerun focused and relevant regression.**
 
 ```powershell
 .\Scripts\Build.ps1
@@ -94,7 +94,7 @@ The failure boundary cancels active generation, cleans owned actors/timers/path/
 
 Expected: all focused assertions green; the real invalid-config process emits a reparsed Failed trace and exits 2 itself, with no outer timeout/kill. Existing gameplay positive paths remain green.
 
-- [ ] **Step A5 — evidence and separate commit.**
+- [x] **Step A5 — evidence and separate commit.**
 
 Record exact command timestamps, before/after HEAD, process exits, reports/counts, and open dependency on B in `sf-ira-001-evidence.md` and `progress.md`. Commit only task A's files as `fix(gameplay): close failed run generation deterministically`.
 

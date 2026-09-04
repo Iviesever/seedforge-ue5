@@ -121,7 +121,8 @@ FSeedForgeRunTransitionResult FSeedForgeRunStateMachine::RequestRestart()
 
     if (State != ESeedForgeRunState::Playing
         && State != ESeedForgeRunState::Won
-        && State != ESeedForgeRunState::Lost)
+        && State != ESeedForgeRunState::Lost
+        && State != ESeedForgeRunState::Failed)
     {
         return Failure(ESeedForgeRunTransitionError::InvalidTransition, TEXT("Only an active or terminal run can restart."));
     }
@@ -140,5 +141,13 @@ FSeedForgeRunTransitionResult FSeedForgeRunStateMachine::BeginGenerating()
     RequiredCoreIds.Reset();
     CollectedCoreIds.Reset();
     State = ESeedForgeRunState::Generating;
+    return FSeedForgeRunTransitionResult::Success();
+}
+
+FSeedForgeRunTransitionResult FSeedForgeRunStateMachine::FailRun()
+{
+    RequiredCoreIds.Reset();
+    CollectedCoreIds.Reset();
+    State = ESeedForgeRunState::Failed;
     return FSeedForgeRunTransitionResult::Success();
 }

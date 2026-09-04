@@ -8,7 +8,8 @@ enum class ESeedForgeRunState : uint8
     Playing,
     Won,
     Lost,
-    Restarting
+    Restarting,
+    Failed
 };
 
 enum class ESeedForgeRunTransitionError : uint8
@@ -62,6 +63,7 @@ public:
     FSeedForgeRunTransitionResult PlayerDied();
     FSeedForgeRunTransitionResult RequestRestart();
     FSeedForgeRunTransitionResult BeginGenerating();
+    FSeedForgeRunTransitionResult FailRun();
 
 private:
     ESeedForgeRunState State = ESeedForgeRunState::Generating;

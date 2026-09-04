@@ -41,10 +41,14 @@ ASeedForgeGameplayCoordinator::ASeedForgeGameplayCoordinator()
     PlayerHealth = Tuning.PlayerMaxHealth;
 }
 
-void ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
+uint64 ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
 {
     check(IsInGameThread());
     ++RunGeneration;
+    Seed = InSeed;
+    RunFailureCode = ESeedForgeRunFailureCode::None;
+    RunFailureMessage.Reset();
+    bSmokeExitRequested = false;
 
     if (RunState.GetState() == ESeedForgeRunState::Restarting)
     {
@@ -55,8 +59,9 @@ void ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
         if (!RunState.RequestRestart().IsSuccess()
             || !RunState.BeginGenerating().IsSuccess())
         {
-            UE_LOG(LogSeedForge, Error, TEXT("Run state rejected restart before generation."));
-            return;
+            EnterRunFailure(ESeedForgeRunFailureCode::StartStateFailed,
+                TEXT("Run state rejected restart before generation."));
+            return 0;
         }
     }
 
@@ -68,18 +73,33 @@ void ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
         }
     }
     ClearRunObjects();
-    Seed = InSeed;
     PlayerHealth = Tuning.PlayerMaxHealth;
     NextAttackTime = 0.0;
     NextContactDamageTime = 0.0;
+
+    if (bGameplaySmokeMode)
+    {
+        InitializeGameplaySmokeTrace();
+        if (GetWorld())
+        {
+            GetWorldTimerManager().SetTimer(GameplaySmokeWatchdogTimer, this,
+                &ASeedForgeGameplayCoordinator::GameplaySmokeWatchdog, 30.0f, false);
+        }
+    }
 
     USeedForgeWorldSubsystem* Subsystem = GetWorld()
         ? GetWorld()->GetSubsystem<USeedForgeWorldSubsystem>()
         : nullptr;
     if (!Subsystem)
     {
-        UE_LOG(LogSeedForge, Error, TEXT("Gameplay run cannot find SeedForge world subsystem."));
-        return;
+        EnterRunFailure(ESeedForgeRunFailureCode::MissingWorldSubsystem,
+            TEXT("Gameplay run cannot find SeedForge world subsystem."));
+        return 0;
+    }
+    if (!GenerationAppliedHandle.IsValid())
+    {
+        GenerationAppliedHandle = Subsystem->OnGenerationApplied().AddUObject(
+            this, &ASeedForgeGameplayCoordinator::HandleGenerationApplied);
     }
     ActiveRequestId = Subsystem->RequestGeneration(Seed, GenerationConfig);
     UE_LOG(
@@ -89,13 +109,20 @@ void ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
         RunGeneration,
         ActiveRequestId,
         Seed);
+    return ActiveRequestId;
 }
 
 bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout& InLayout)
 {
     using namespace SeedForge::GameplayCoordinator::Private;
 
-    if (!GetWorld() || RunState.GetState() != ESeedForgeRunState::Generating)
+    if (!GetWorld())
+    {
+        EnterRunFailure(ESeedForgeRunFailureCode::MissingWorldSubsystem,
+            TEXT("Cannot apply a layout without a World."));
+        return false;
+    }
+    if (RunState.GetState() != ESeedForgeRunState::Generating)
     {
         return false;
     }
@@ -104,12 +131,9 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
         GenerationConfig);
     if (!LayoutValidation.IsValid())
     {
-        UE_LOG(
-            LogSeedForge,
-            Error,
-            TEXT("Gameplay rejected layout code=%d: %s"),
-            static_cast<int32>(LayoutValidation.ErrorCode),
-            *LayoutValidation.ErrorMessage);
+        EnterRunFailure(ESeedForgeRunFailureCode::InvalidLayout,
+            FString::Printf(TEXT("Layout validation code=%d: %s"),
+                static_cast<int32>(LayoutValidation.ErrorCode), *LayoutValidation.ErrorMessage));
         return false;
     }
     const FSeedForgeEncounterResult Planned = FSeedForgeEncounterPlanner::Generate(
@@ -117,12 +141,9 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
         EncounterConfig);
     if (!Planned.IsSuccess())
     {
-        UE_LOG(
-            LogSeedForge,
-            Error,
-            TEXT("Gameplay encounter failed code=%d: %s"),
-            static_cast<int32>(Planned.ErrorCode),
-            *Planned.ErrorMessage);
+        EnterRunFailure(ESeedForgeRunFailureCode::EncounterFailed,
+            FString::Printf(TEXT("Encounter planning code=%d: %s"),
+                static_cast<int32>(Planned.ErrorCode), *Planned.ErrorMessage));
         return false;
     }
 
@@ -138,20 +159,27 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
         this,
         nullptr,
         ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
-    if (!Visualization)
+    if (!IsValid(Visualization) || Visualization->IsActorBeingDestroyed())
     {
-        UE_LOG(LogSeedForge, Error, TEXT("Gameplay failed to spawn layout visualization."));
+        EnterRunFailure(ESeedForgeRunFailureCode::SpawnFailed,
+            TEXT("Gameplay failed to spawn layout visualization."));
         return false;
     }
     Visualization->SetAutoGenerateOnBeginPlay(false);
     Visualization->FinishSpawning(VisualizationTransform);
+    if (!IsValid(Visualization) || Visualization->IsActorBeingDestroyed())
+    {
+        EnterRunFailure(ESeedForgeRunFailureCode::SpawnFailed,
+            TEXT("Layout visualization was destroyed during initialization."));
+        return false;
+    }
     Visualization->ApplyLayout(Layout);
 
     Player = ResolvePlayer();
-    if (!Player)
+    if (!IsValid(Player) || Player->IsActorBeingDestroyed())
     {
-        UE_LOG(LogSeedForge, Error, TEXT("Gameplay failed to resolve player Character."));
-        ClearRunObjects();
+        EnterRunFailure(ESeedForgeRunFailureCode::SpawnFailed,
+            TEXT("Gameplay failed to resolve player Character."));
         return false;
     }
     Player->SetGameplayCoordinator(this);
@@ -168,10 +196,10 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
             FSeedForgeGameplayMath::CellToWorld(CoreEntity.Cell, Tuning.CellSize, CoreHeight),
             FRotator::ZeroRotator,
             Parameters);
-        if (!Core)
+        if (!IsValid(Core) || Core->IsActorBeingDestroyed())
         {
-            UE_LOG(LogSeedForge, Error, TEXT("Gameplay failed to spawn Core %u."), CoreEntity.StableId);
-            ClearRunObjects();
+            EnterRunFailure(ESeedForgeRunFailureCode::SpawnFailed,
+                FString::Printf(TEXT("Gameplay failed to spawn Core %u."), CoreEntity.StableId));
             return false;
         }
         Core->Configure(CoreEntity.StableId, CoreEntity.Cell);
@@ -185,10 +213,10 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
             FSeedForgeGameplayMath::CellToWorld(EnemyEntity.Cell, Tuning.CellSize, EnemyHeight),
             FRotator::ZeroRotator,
             Parameters);
-        if (!Enemy)
+        if (!IsValid(Enemy) || Enemy->IsActorBeingDestroyed())
         {
-            UE_LOG(LogSeedForge, Error, TEXT("Gameplay failed to spawn enemy %u."), EnemyEntity.StableId);
-            ClearRunObjects();
+            EnterRunFailure(ESeedForgeRunFailureCode::SpawnFailed,
+                FString::Printf(TEXT("Gameplay failed to spawn enemy %u."), EnemyEntity.StableId));
             return false;
         }
         Enemy->Configure(EnemyEntity.StableId, EnemyEntity.Cell);
@@ -200,10 +228,10 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
         FSeedForgeGameplayMath::CellToWorld(EncounterPlan.Exit.Cell, Tuning.CellSize, ExitHeight),
         FRotator::ZeroRotator,
         Parameters);
-    if (!ExitActor)
+    if (!IsValid(ExitActor) || ExitActor->IsActorBeingDestroyed())
     {
-        UE_LOG(LogSeedForge, Error, TEXT("Gameplay failed to spawn exit."));
-        ClearRunObjects();
+        EnterRunFailure(ESeedForgeRunFailureCode::SpawnFailed,
+            TEXT("Gameplay failed to spawn exit."));
         return false;
     }
     ExitActor->Configure(EncounterPlan.Exit.Cell);
@@ -217,8 +245,8 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
     const FSeedForgeRunTransitionResult Started = RunState.StartPlaying(MoveTemp(CoreIds));
     if (!Started.IsSuccess())
     {
-        UE_LOG(LogSeedForge, Error, TEXT("Gameplay state rejected Playing: %s"), *Started.ErrorMessage);
-        ClearRunObjects();
+        EnterRunFailure(ESeedForgeRunFailureCode::StartStateFailed,
+            FString::Printf(TEXT("Gameplay state rejected Playing: %s"), *Started.ErrorMessage));
         return false;
     }
 
@@ -377,6 +405,8 @@ FSeedForgeGameplaySnapshot ASeedForgeGameplayCoordinator::GetSnapshot() const
     Snapshot.CollectedCoreCount = RunState.GetCollectedCoreCount();
     Snapshot.RequiredCoreCount = RunState.GetRequiredCoreCount();
     Snapshot.bExitUnlocked = RunState.IsExitUnlocked();
+    Snapshot.FailureCode = RunFailureCode;
+    Snapshot.FailureMessage = RunFailureMessage;
     return Snapshot;
 }
 
@@ -418,16 +448,6 @@ int32 ASeedForgeGameplayCoordinator::GetLiveEnemyActorCount() const
 void ASeedForgeGameplayCoordinator::BeginPlay()
 {
     Super::BeginPlay();
-    USeedForgeWorldSubsystem* Subsystem = GetWorld()->GetSubsystem<USeedForgeWorldSubsystem>();
-    if (!Subsystem)
-    {
-        UE_LOG(LogSeedForge, Error, TEXT("Gameplay startup cannot find SeedForge world subsystem."));
-        return;
-    }
-    GenerationAppliedHandle = Subsystem->OnGenerationApplied().AddUObject(
-        this,
-        &ASeedForgeGameplayCoordinator::HandleGenerationApplied);
-
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeSeed="), Seed);
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGridWidth="), GenerationConfig.GridWidth);
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGridHeight="), GenerationConfig.GridHeight);
@@ -437,6 +457,10 @@ void ASeedForgeGameplayCoordinator::BeginPlay()
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGameplayTrace="), GameplaySmokeTracePath);
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGameplayCaptureDir="), GameplaySmokeCaptureDirectory);
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeGitSha="), GameplaySmokeGitSha);
+    if (bGameplaySmokeMode)
+    {
+        InitializeGameplaySmokeTrace();
+    }
     if (bGameplaySmokeMode
         && (GameplaySmokeTracePath.IsEmpty()
             || GameplaySmokeCaptureDirectory.IsEmpty()
@@ -468,19 +492,16 @@ void ASeedForgeGameplayCoordinator::EndPlay(const EEndPlayReason::Type EndPlayRe
 void ASeedForgeGameplayCoordinator::HandleGenerationApplied(
     const FSeedForgeAsyncCompletion& Completion)
 {
-    if (Completion.RequestId != ActiveRequestId)
+    if (ActiveRequestId == 0 || Completion.RequestId != ActiveRequestId)
     {
         return;
     }
     ActiveRequestId = 0;
     if (!Completion.Result.IsSuccess())
     {
-        UE_LOG(
-            LogSeedForge,
-            Error,
-            TEXT("Gameplay generation failed code=%d: %s"),
-            static_cast<int32>(Completion.Result.ErrorCode),
-            *Completion.Result.ErrorMessage);
+        EnterRunFailure(ESeedForgeRunFailureCode::GenerationFailed,
+            FString::Printf(TEXT("Generation code=%d: %s"),
+                static_cast<int32>(Completion.Result.ErrorCode), *Completion.Result.ErrorMessage));
         return;
     }
     ApplyGeneratedLayout(Completion.Result.Layout);
@@ -530,6 +551,10 @@ void ASeedForgeGameplayCoordinator::ClearRunObjects()
         Player->Destroy();
     }
     Player = nullptr;
+    PendingSmokeScreenshotPath.Reset();
+    GameplaySmokeCoreIndex = 0;
+    GameplaySmokeStageDeadline = 0.0;
+    GameplaySmokeStage = EGameplaySmokeStage::Disabled;
 }
 
 void ASeedForgeGameplayCoordinator::TickInteractions()
@@ -683,6 +708,50 @@ void ASeedForgeGameplayCoordinator::EnterTerminalState()
     }
 }
 
+void ASeedForgeGameplayCoordinator::EnterRunFailure(
+    ESeedForgeRunFailureCode Code, const FString& Message, const TCHAR* SmokeCode)
+{
+    if (RunFailureCode != ESeedForgeRunFailureCode::None
+        && RunState.GetState() == ESeedForgeRunState::Failed)
+    {
+        return;
+    }
+    ActiveRequestId = 0;
+    if (UWorld* World = GetWorld())
+    {
+        if (USeedForgeWorldSubsystem* Subsystem = World->GetSubsystem<USeedForgeWorldSubsystem>())
+        {
+            Subsystem->CancelGeneration();
+            Subsystem->OnGenerationApplied().Remove(GenerationAppliedHandle);
+        }
+    }
+    GenerationAppliedHandle.Reset();
+    ClearRunObjects();
+    Layout = {};
+    EncounterPlan = {};
+    PlayerHealth = 0.0f;
+    NextAttackTime = 0.0;
+    NextContactDamageTime = 0.0;
+    RunState.FailRun();
+    RunFailureCode = Code;
+    RunFailureMessage = Message;
+    UE_LOG(LogSeedForge, Error, TEXT("Gameplay run failed code=%s message=%s"),
+        LexToString(Code), *Message);
+    if (bGameplaySmokeMode)
+    {
+        FailGameplaySmoke(SmokeCode ? SmokeCode : LexToString(Code), Message);
+    }
+}
+
+void ASeedForgeGameplayCoordinator::InitializeGameplaySmokeTrace()
+{
+    GameplaySmokeTrace = {};
+    GameplaySmokeTrace.GitSha = GameplaySmokeGitSha;
+    GameplaySmokeTrace.EngineVersion = FEngineVersion::Current().ToString();
+    GameplaySmokeTrace.Seed = Seed;
+    GameplaySmokeTrace.StateTransitions = {TEXT("Generating")};
+}
+
 void ASeedForgeGameplayCoordinator::CaptureScreenshot()
 {
     CapturePath = FPaths::ConvertRelativePathToFull(CapturePath);
@@ -706,10 +775,6 @@ void ASeedForgeGameplayCoordinator::ExitAfterCapture()
 
 void ASeedForgeGameplayCoordinator::StartGameplaySmoke()
 {
-    GameplaySmokeTrace = {};
-    GameplaySmokeTrace.GitSha = GameplaySmokeGitSha;
-    GameplaySmokeTrace.EngineVersion = FEngineVersion::Current().ToString();
-    GameplaySmokeTrace.Seed = Seed;
     GameplaySmokeTrace.LayoutHash = Layout.CanonicalHash;
     GameplaySmokeTrace.EncounterHash = EncounterPlan.CanonicalHash;
     GameplaySmokeTrace.ActorCounts = {
@@ -717,7 +782,7 @@ void ASeedForgeGameplayCoordinator::StartGameplaySmoke()
         GetLiveCoreActorCount(),
         GetLiveEnemyActorCount(),
         IsValid(ExitActor) ? 1 : 0};
-    GameplaySmokeTrace.StateTransitions = {TEXT("Generating"), TEXT("Playing")};
+    GameplaySmokeTrace.StateTransitions.Add(TEXT("Playing"));
 
     const FSeedForgeEncounterResult Validation = FSeedForgeEncounterPlanner::Validate(
         EncounterPlan,
@@ -1051,6 +1116,10 @@ bool ASeedForgeGameplayCoordinator::IsPendingSmokeScreenshotReady() const
 
 void ASeedForgeGameplayCoordinator::CompleteGameplaySmoke()
 {
+    if (bSmokeExitRequested)
+    {
+        return;
+    }
     GameplaySmokeStage = EGameplaySmokeStage::Complete;
     GameplaySmokeTrace.bSuccess = true;
     GameplaySmokeTrace.FailureCode.Reset();
@@ -1070,6 +1139,7 @@ void ASeedForgeGameplayCoordinator::CompleteGameplaySmoke()
         Layout.CanonicalHash,
         EncounterPlan.CanonicalHash,
         *GameplaySmokeTracePath);
+    bSmokeExitRequested = true;
     FPlatformMisc::RequestExitWithStatus(false, 0);
 }
 
@@ -1077,8 +1147,13 @@ void ASeedForgeGameplayCoordinator::FailGameplaySmoke(
     const TCHAR* FailureCode,
     const FString& FailureMessage)
 {
-    if (GameplaySmokeStage == EGameplaySmokeStage::Failed)
+    if (bSmokeExitRequested || GameplaySmokeStage == EGameplaySmokeStage::Failed)
     {
+        return;
+    }
+    if (RunState.GetState() != ESeedForgeRunState::Failed)
+    {
+        EnterRunFailure(ESeedForgeRunFailureCode::SmokeFailed, FailureMessage, FailureCode);
         return;
     }
     GameplaySmokeStage = EGameplaySmokeStage::Failed;
@@ -1090,6 +1165,12 @@ void ASeedForgeGameplayCoordinator::FailGameplaySmoke(
     GameplaySmokeTrace.bSuccess = false;
     GameplaySmokeTrace.FailureCode = FailureCode;
     GameplaySmokeTrace.FailureMessage = FailureMessage;
+    GameplaySmokeTrace.ActorCounts = {};
+    if (GameplaySmokeTrace.StateTransitions.IsEmpty())
+    {
+        GameplaySmokeTrace.StateTransitions.Add(TEXT("Generating"));
+    }
+    GameplaySmokeTrace.StateTransitions.Add(TEXT("Failed"));
     if (GetWorld())
     {
         GetWorldTimerManager().ClearTimer(GameplaySmokeTimer);
@@ -1102,7 +1183,11 @@ void ASeedForgeGameplayCoordinator::FailGameplaySmoke(
         TEXT("SEEDFORGE_GAMEPLAY_SMOKE_FAILURE code=%s message=%s"),
         FailureCode,
         *FailureMessage);
-    FPlatformMisc::RequestExitWithStatus(false, 2);
+    bSmokeExitRequested = true;
+    // A pre-first-frame Editor exit can discard PostQuitMessage's status. This
+    // dedicated failing smoke process has synchronously cleaned its run and
+    // saved its trace; force the requested failure code (and platform log flush).
+    FPlatformMisc::RequestExitWithStatus(true, 2);
 }
 
 bool ASeedForgeGameplayCoordinator::WriteGameplaySmokeTrace()

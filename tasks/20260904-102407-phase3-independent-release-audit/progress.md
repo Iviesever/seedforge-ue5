@@ -24,7 +24,7 @@
 - [x] Read all four source audit files completely.
 - [x] Read repository rules and recover fresh local/remote state.
 - [x] Preserve source audit packet without rewriting historical claims.
-- [ ] A — SF-IRA-001: failure lifecycle; RED in progress.
+- [x] A — SF-IRA-001 core: RED reproduced, central failure/recovery GREEN, 6 focused + 69 full tests, Grid/Encounter real failure processes exit 2; persistent R/N recovery remains dependent on B.
 - [ ] B — SF-IRA-003: persistent R/N input ownership.
 - [ ] C — SF-IRA-004: combined live Dash direction.
 - [ ] D — SF-IRA-006: safe coordinate arithmetic.
@@ -38,6 +38,6 @@
 
 ## Current boundary
 
-SF-IRA-001 matches current source: a matching failed completion clears the request ID and returns while the state remains Generating; layout/encounter/spawn failures have the same missing terminal boundary; the watchdog is armed after successful application. Work starts with real World failure tests and a real-process invalid-config smoke reproduction. Recovery through persistent Controller input remains a separately tracked dependency on task B, not a claim closed by task A alone.
+Task A's exact RED/GREEN/process evidence is in `sf-ira-001-evidence.md`; latest full local suite is 69/69 with zero test warnings/failures, not yet a final release gate. The starting contract HEAD is `baa314d6b067e7661e0c131e056c1e617289ab81`; the separate A fix commit follows this evidence checkpoint.
 
-No production code changed at this checkpoint. The previous 63-test/package run is historical only, not independent audit certification.
+Next: task B persistent Controller R/N bindings and actual dispatch/possession tests. Final Gate 14 additionally needs the whole-process UE Dataflow initialization log diagnostic reviewed; it is not silently allow-listed. The previous 63-test/package run remains historical, not independent audit certification.

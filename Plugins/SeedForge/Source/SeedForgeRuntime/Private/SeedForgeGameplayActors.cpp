@@ -59,6 +59,7 @@ namespace SeedForge::GameplayActors::Private
         case ESeedForgeRunState::Won: return TEXT("EXTRACTED - YOU WIN");
         case ESeedForgeRunState::Lost: return TEXT("RUN LOST");
         case ESeedForgeRunState::Restarting: return TEXT("RESTARTING");
+        case ESeedForgeRunState::Failed: return TEXT("RUN FAILED");
         default: return TEXT("UNKNOWN");
         }
     }
@@ -439,12 +440,18 @@ void ASeedForgeHUD::DrawHUD()
     Line(FString::Printf(TEXT("DATA CORES  %d / %d"), Snapshot.CollectedCoreCount, Snapshot.RequiredCoreCount));
     Line(FString::Printf(TEXT("SEED  %llu"), Snapshot.Seed));
     Line(FString::Printf(TEXT("RUN  %s"), SeedForge::GameplayActors::Private::RunStateText(Snapshot.RunState)));
+    if (Snapshot.FailureCode != ESeedForgeRunFailureCode::None)
+    {
+        Line(FString::Printf(TEXT("FAILURE  %s: %s"),
+            LexToString(Snapshot.FailureCode), *Snapshot.FailureMessage), 0.7f);
+    }
     Line(Snapshot.bExitUnlocked ? TEXT("EXIT  UNLOCKED") : TEXT("EXIT  LOCKED"));
     Y += 12.0f;
     Line(TEXT("WASD Move   Mouse Aim   LMB Attack   Space Dash"), 0.82f);
     Line(TEXT("R Restart Same Seed   N New Seed"), 0.82f);
     if (Snapshot.RunState == ESeedForgeRunState::Won
-        || Snapshot.RunState == ESeedForgeRunState::Lost)
+        || Snapshot.RunState == ESeedForgeRunState::Lost
+        || Snapshot.RunState == ESeedForgeRunState::Failed)
     {
         Y += 18.0f;
         Line(TEXT("Press R to replay this layout or N for a new run"), 1.0f);
