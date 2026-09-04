@@ -46,6 +46,7 @@ $arguments = @(
     "-abslog=$logPath"
 )
 
+$arguments += @(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
 $startedAtUtc = [DateTimeOffset]::UtcNow
 Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Automation Editor process' -Action {
     $process = Start-Process -FilePath $editor -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -79,6 +80,8 @@ if ([int]$report.succeededWithWarnings -ne 0) {
 
 . (Join-Path $PSScriptRoot 'LogValidation.ps1')
 $logProof = Assert-SeedForgeLog -Path $logPath -AllowedWarnings UE58LocalEnvironment
+. (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+$storageProof = Assert-SeedForgeRuntimeStorage -Path $logPath -ProjectRoot $projectRoot
 Assert-SeedForgeScriptContext -Context $verificationContext
 $summaryPath = Join-Path $reportPath 'verification-summary.json'
 $summary = [pscustomobject]@{
@@ -88,7 +91,7 @@ $summary = [pscustomobject]@{
     passed=[int]$report.succeeded; warnings=[int]$report.succeededWithWarnings; failed=[int]$report.failed
     notRun=[int]$report.notRun; inProcess=[int]$report.inProcess
     reportSha256=(Get-FileHash -LiteralPath $reportIndex -Algorithm SHA256).Hash.ToLowerInvariant()
-    log=$logProof; summaryPath=$summaryPath
+    log=$logProof; storageProof=$storageProof; summaryPath=$summaryPath
 }
 [IO.File]::WriteAllText($summaryPath,($summary | ConvertTo-Json -Depth 7))
 Assert-SeedForgeScriptContext -Context $verificationContext

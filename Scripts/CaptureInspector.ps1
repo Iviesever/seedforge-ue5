@@ -52,6 +52,7 @@ $arguments = @(
     "-abslog=$logPath"
 )
 
+$arguments += @(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
 $startedAtUtc = [DateTimeOffset]::UtcNow
 Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Inspector capture process' -Action {
     $process = Start-Process -FilePath $editor -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -69,6 +70,8 @@ if (-not (Select-String -LiteralPath $logPath -Pattern 'Inspector capture passed
 . (Join-Path $PSScriptRoot 'LogValidation.ps1')
 . (Join-Path $PSScriptRoot 'PngValidation.ps1')
 $logProof = Assert-SeedForgeLog -Path $logPath -AllowedWarnings UE58LocalEnvironment
+. (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+$storageProof = Assert-SeedForgeRuntimeStorage -Path $logPath -ProjectRoot $projectRoot
 $receipts = @(Select-String -LiteralPath $logPath -Pattern "Inspector capture passed path='(?<path>[^']+)' width=(?<width>[0-9]+) height=(?<height>[0-9]+) bytes=(?<bytes>[0-9]+)\.$")
 if ($receipts.Count -ne 1) { throw 'Inspector capture requires exactly one native pixel-save receipt.' }
 $receipt = $receipts[0].Matches[0].Groups
@@ -80,7 +83,7 @@ $pngProof = Assert-SeedForgePng -Path $capturePath -RunDirectory $mediaRoot -Req
 if ($pngProof.Length -ne [long]$receipt['bytes'].Value) { throw 'Inspector saved bytes differ from its native receipt.' }
 Assert-SeedForgeScriptContext -Context $verificationContext
 $summaryPath = Join-Path $logRoot "capture-inspector-$timestamp.json"
-$summary = [pscustomobject]@{ sourceRevision=$verificationContext.SourceRevision; result='Passed'; exitCode=0; startedAtUtc=$startedAtUtc.ToString('o'); completedAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); capture=$pngProof; log=$logProof; summaryPath=$summaryPath }
+$summary = [pscustomobject]@{ sourceRevision=$verificationContext.SourceRevision; result='Passed'; exitCode=0; startedAtUtc=$startedAtUtc.ToString('o'); completedAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); capture=$pngProof; log=$logProof; storageProof=$storageProof; summaryPath=$summaryPath }
 [IO.File]::WriteAllText($summaryPath,($summary | ConvertTo-Json -Depth 7))
 Assert-SeedForgeScriptContext -Context $verificationContext
 Write-Host "SeedForge Inspector capture passed. Image: $capturePath Log: $logPath"

@@ -72,6 +72,7 @@ $arguments = @($launchPrefixArguments) + @(
     "-abslog=$logPath"
 )
 
+$arguments += @(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
 $processStartedAtUtc = [DateTimeOffset]::UtcNow
 Invoke-SeedForgeScriptStep -Context $verificationContext -Name "$RunLabel gameplay smoke process" -Action {
     $process = Start-Process -FilePath $Executable -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -134,6 +135,8 @@ $validatedScreenshots = @(Assert-SeedForgeGameplayCaptures -Trace $trace -RunDir
 
 . (Join-Path $PSScriptRoot 'LogValidation.ps1')
 $logProof = Assert-SeedForgeLog -Path $logPath -AllowedWarnings UE58LocalEnvironment
+. (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+$storageProof = Assert-SeedForgeRuntimeStorage -Path $logPath -ProjectRoot $projectRoot -RequireDdc:($RunLabel -eq 'editor')
 Assert-SeedForgeScriptContext -Context $verificationContext
 
 $summary = [ordered]@{
@@ -160,6 +163,7 @@ $summary = [ordered]@{
     visualReview = 'not-assessed-by-script'
     log = $logPath
     logProof = $logProof
+    storageProof = $storageProof
     traceSha256 = (Get-FileHash -LiteralPath $tracePath -Algorithm SHA256).Hash.ToLowerInvariant()
     summaryPath = $summaryPath
     allowedWarningCount = $logProof.AllowedWarningCount

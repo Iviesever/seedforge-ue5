@@ -63,6 +63,21 @@ if ($automationProjects.Count -ne 1 -or $automationProjects[0].Name -cne 'SeedFo
 if ($automationProjectXml.SelectNodes('//*[local-name()="ProjectReference"]').Count -ne 0) {
     throw 'Automation adapter may use installed binary references only, not ProjectReferences.'
 }
+$readOnlyPaths = @(
+    (Join-Path $EngineRoot 'Engine/Intermediate/Build/EpicGames.ScriptBuild.props'),
+    (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'UnrealEngine/Intermediate/Build/UnrealBuildTool.Env.BuildConfiguration.xml')
+)
+function Read-InfrastructureState {
+    @(foreach ($path in $readOnlyPaths) {
+        if (Test-Path -LiteralPath $path) {
+            $file = Get-Item -LiteralPath $path
+            [pscustomobject]@{path=$path;exists=$true;size=$file.Length;lastWriteUtc=$file.LastWriteTimeUtc.ToString('o');sha256=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()}
+        }
+        else { [pscustomobject]@{path=$path;exists=$false} }
+    })
+}
+$infrastructureBefore = Read-InfrastructureState
+$infrastructureReport = Join-Path $uatDiagnosticRoot 'read-only-infrastructure.json'
 Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Stock BuildPlugin UAT process' -Action {
     $automationCache = Join-Path $projectRoot '.cache/AutomationExtension'
     $settings = @{
@@ -73,6 +88,8 @@ Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Stock BuildPlugi
         MSBUILDDISABLENODEREUSE='1'
     }
     $prior = @{}
+    $uatActionError = $null
+    $infrastructureError = $null
     foreach ($key in $settings.Keys) { $prior[$key]=[Environment]::GetEnvironmentVariable($key,'Process') }
     try {
         foreach ($key in $settings.Keys) { [Environment]::SetEnvironmentVariable($key,$settings[$key],'Process') }
@@ -82,9 +99,23 @@ Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Stock BuildPlugi
             throw "BuildPlugin failed with exit code $LASTEXITCODE. See '$consoleLog'."
         }
     }
+    catch { $uatActionError = $_ }
     finally {
         foreach ($key in $prior.Keys) { [Environment]::SetEnvironmentVariable($key,$prior[$key],'Process') }
+        try {
+            $infrastructureAfter = Read-InfrastructureState
+            [IO.File]::WriteAllText($infrastructureReport,([ordered]@{before=$infrastructureBefore;after=$infrastructureAfter} | ConvertTo-Json -Depth 6))
+            if (($infrastructureBefore | ConvertTo-Json -Compress) -cne ($infrastructureAfter | ConvertTo-Json -Compress)) {
+                throw "Read-only Engine/global build metadata changed; see $infrastructureReport."
+            }
+        }
+        catch { $infrastructureError = $_ }
     }
+    if ($null -ne $uatActionError -and $null -ne $infrastructureError) {
+        throw [AggregateException]::new("BuildPlugin and infrastructure guard failed: $($uatActionError.Exception.Message); $($infrastructureError.Exception.Message)",[Exception[]]@($uatActionError.Exception,$infrastructureError.Exception))
+    }
+    if ($null -ne $infrastructureError) { throw $infrastructureError }
+    if ($null -ne $uatActionError) { throw $uatActionError }
 }
 . (Join-Path $PSScriptRoot 'BuildPluginValidation.ps1')
 $targetProof = @(Get-SeedForgeBuildPluginTargetProof -ConsoleLog $consoleLog -DiagnosticRoot $uatDiagnosticRoot -PackageDirectory $packageDir -StartedAtUtc $startedAtUtc)
@@ -117,6 +148,7 @@ $manifest = [ordered]@{
     targetProof = $targetProof
     consoleLog = $consoleLog
     diagnosticRoot = $uatDiagnosticRoot
+    infrastructureGuardReport = $infrastructureReport
     result = 'Passed'
 }
 $manifestPath = Join-Path $pluginRoot "plugin-package-$timestamp.json"

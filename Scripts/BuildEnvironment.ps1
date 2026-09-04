@@ -8,7 +8,20 @@ function Initialize-SeedForgeBuildEnvironment {
     }
     $ubaStorageRoot = Join-Path $resolvedProjectRoot '.cache\UnrealBuildAccelerator'
     $derivedDataRoot = Join-Path $resolvedProjectRoot '.cache\DerivedDataCache'
-    New-Item -ItemType Directory -Force -Path $ubaStorageRoot, $derivedDataRoot | Out-Null
+    $temporaryRoot = Join-Path $resolvedProjectRoot '.cache\Temp'
+    New-Item -ItemType Directory -Force -Path $ubaStorageRoot, $derivedDataRoot, $temporaryRoot | Out-Null
     [Environment]::SetEnvironmentVariable('UBA_ROOT', $ubaStorageRoot, 'Process')
     [Environment]::SetEnvironmentVariable('UE-LocalDataCachePath', $derivedDataRoot, 'Process')
+    [Environment]::SetEnvironmentVariable('TEMP', $temporaryRoot, 'Process')
+    [Environment]::SetEnvironmentVariable('TMP', $temporaryRoot, 'Process')
+}
+
+function Get-SeedForgeRuntimeArguments {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ProjectRoot)
+    $root = [IO.Path]::GetFullPath($ProjectRoot)
+    if (-not (Test-Path -LiteralPath (Join-Path $root 'SeedForge.uproject') -PathType Leaf)) {
+        throw 'Runtime arguments require the SeedForge project root.'
+    }
+    return @('-DDC=SeedForgeLocal','-DDC-NoDefaultGraph',('-LocalDataCachePath='+(Join-Path $root '.cache/DerivedDataCache')))
 }

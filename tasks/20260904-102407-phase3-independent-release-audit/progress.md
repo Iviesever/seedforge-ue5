@@ -59,3 +59,20 @@ F checkpoint is committed as `2035e925ceb73fd2aa24de2646a0ad6197216dc8`. G found
 H passive path/restart observations and failure-only input scaffolding reached 109/109 plus zero whole-log errors/warnings at `automation-20260904-160608-31c4e8d832434422a94b162105c36274`. H6 success validator/serializer RED then produced 8 passing controls/2 intended failures; its ordinary real Editor process `InputSelfTest/20260904-164323-ba17eba96b194f6cb798e09f9055002b` exited 2 itself with exactly one Failed/MissingInputEvidence trace. Real input driving and H7 smoke path proof are next, not certified.
 
 Strict logging exposed 13 built-in Engine startup self-test failures under zh-CN. Same-binary/same-98-tests comparison at `StartupCulture/20260904-144858` reproduced 13 at default culture and zero with `-culture=en`; verification child processes now pin English without changing OS/Engine settings or skipping tests. The separate historical Dataflow Date diagnostic remains unallowlisted. Final packaging, all 16 clean-candidate gates, current documentation, remote/PR re-read and source-only publication remain incomplete; nothing has been pushed/merged/released for this audit yet.
+
+## 18:31 runtime boundary checkpoint (2026-09-04, UTC+8)
+
+G process integration is committed as `be52224f56f04c69d51cd1e93bf67b523fb91b93`; H1-H6 ordinary input/path/restart is committed as `058615673ab593611d054f7b7ebd337363bb091d`. H7 remains unimplemented and is gated on the first actual clean BuildPlugin checkpoint.
+
+The Zen metadata/global-temp violation was diagnosed from original logs, not allowed as an environment warning. `root-cause-runtime-output-boundary.md` records the explicit filesystem graph, process-local TEMP/TMP, Cook SkipZenStore and original before/after metadata. `RuntimeStorageValidation.ps1` is now invoked by all ten runtime launchers. It checks observed storage behavior and original log hashes; it is not a whole-filesystem attestation.
+
+Fresh parent checks after integration:
+
+- Runtime storage helper: 64/64 on both PS 5.1 and 7.6 at `RuntimeStorageValidation/20260904-102203-ea0b8d04e21c4e0fa35cc145da508071` and `20260904-102204-9144023cdb484da98648cbc06eeede54` (UTC stamps). Launcher-consumer absence and duplicate IoStore arguments each produced an observed RED before correction. Runtime provider and child-temp inheritance checks passed on both versions.
+- Entry-point dirty/revision/git-failure harness: 96/96 at `ReleaseEntrypoints/20260904-182508-8e546f6deb934f7d8d176ff1f8bf831e`.
+- Full Automation: 114/114, zero test/whole-log warnings and errors, at `automation-20260904-182442-b9fe06f5e6b54cd1a403fe4377218bb7`; observed owned DDC/temp proof passed.
+- Ordinary input: `InputSelfTest/20260904-182403-f3c129ef902948ed981db36ddb31adb8`, exit 0, four runs/13 effects/10 transitions/four queued requests, actual enemy distance 20.4186055; original-byte strict log and storage proofs agree. Zero errors, 25 narrowly allowed existing environment warnings.
+- Gameplay/captures: `Gameplay/20260904-182556-3ef8e2cb42f043ffa783bd238bc5f88d`, exit 0, three validated native receipts and PNGs, matching golden hashes and same strict storage/log proof. These fresh images passed machine validation; this triplet has not received an additional manual visual review.
+- RenderUnavailable negative: `RunFailure/20260904-182748-835-RenderUnavailable`, native exit 2 without outer timeout; exactly two expected errors, no unexpected error/warning, owned storage proof passed.
+
+All of these are explicitly diagnostic source runs, not final release certification. Independent review corrected UnrealPak full-log selection (underscore scenario logs, not abbreviated stdout logs) and duplicated IoStore arguments (UE 5.8 already inherits AdditionalPakOptions). Before actual BuildCookRun, add the original UAT Running/exit/copy correlation for those full logs and validate fresh non-Zen cooked storage. First actual BuildPlugin, H7, final all-16 gates, visual/docs/remote publication remain open. The PackagePlugin read-only metadata guard is a before/after diagnostic for the two identified infrastructure paths, not an Engine-wide attestation.

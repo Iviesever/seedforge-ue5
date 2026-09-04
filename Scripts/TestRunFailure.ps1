@@ -43,6 +43,7 @@ if ($Case -eq 'CapturePath') { $arguments += @('-RenderOffscreen', '-windowed', 
 else { $arguments += '-nullrhi' }
 if ($Case -eq 'Grid') { $arguments += '-SeedForgeGridWidth=0' }
 if ($Case -eq 'Encounter') { $arguments += '-SeedForgeRoomCount=1' }
+$arguments += @(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
 $started = Get-Date
 $outcome = Invoke-SeedForgeScriptStep -Context $verificationContext -Name "Expected failure $Case process" -Action {
     $process = Start-Process -FilePath $Executable -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -80,7 +81,9 @@ $failures = @(Select-String -LiteralPath $logPath -Pattern 'SEEDFORGE_GAMEPLAY_S
 if ($failures.Count -ne 1) { throw "Expected one smoke failure completion, found $($failures.Count)." }
 . (Join-Path $PSScriptRoot 'LogValidation.ps1')
 $logProof = Assert-SeedForgeLog -Path $logPath -AllowedWarnings UE58LocalEnvironment -ExpectedFailure $Case
+. (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+$storageProof = Assert-SeedForgeRuntimeStorage -Path $logPath -ProjectRoot $projectRoot -RequireDdc:($prefix.Count -gt 0)
 if ($trace.failureMessage -cne $logProof.ExpectedFailureMessage) { throw 'Negative trace does not match its exact expected diagnostic.' }
 Assert-SeedForgeScriptContext -Context $verificationContext
 Write-Host "Run failure contract passed: $Case, runtime exit 2, failed trace reparsed, no outer timeout."
-return [pscustomobject]@{ sourceRevision=$traceRevision; result='ExpectedFailure'; observation=(Join-Path $runRoot 'observation.json'); trace=$tracePath; traceSha256=(Get-FileHash -LiteralPath $tracePath -Algorithm SHA256).Hash.ToLowerInvariant(); log=$logPath; logProof=$logProof; exitCode=$outcome.ExitCode }
+return [pscustomobject]@{ sourceRevision=$traceRevision; result='ExpectedFailure'; observation=(Join-Path $runRoot 'observation.json'); trace=$tracePath; traceSha256=(Get-FileHash -LiteralPath $tracePath -Algorithm SHA256).Hash.ToLowerInvariant(); log=$logPath; logProof=$logProof;storageProof=$storageProof; exitCode=$outcome.ExitCode }

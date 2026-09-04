@@ -44,6 +44,8 @@ New-Item -ItemType Directory -Force -Path $uatDiagnosticRoot, $uatEngineSavedRoo
 Set-Item -Path 'Env:uebp_LogFolder' -Value $uatDiagnosticRoot
 Set-Item -Path 'Env:uebp_FinalLogFolder' -Value $uatDiagnosticRoot
 Set-Item -Path 'Env:uebp_EngineSavedFolder' -Value $uatEngineSavedRoot
+$runtimeArguments = @(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
+$runtimeOptions = ($runtimeArguments -join ' ') + ' -culture=en'
 $arguments = @(
     'BuildCookRun',
     "-project=$projectFile",
@@ -61,7 +63,8 @@ $arguments = @(
     '-utf8output',
     '-NoCodeSign'
     '-UbtArgs=-UBADisableRemote'
-    '-AdditionalCookerOptions=-culture=en'
+    ('-AdditionalCookerOptions="' + $runtimeOptions + ' -SkipZenStore"')
+    ('-AdditionalPakOptions="' + $runtimeOptions + '"')
 )
 
 $startedAtUtc = [DateTimeOffset]::UtcNow
@@ -74,6 +77,18 @@ Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'BuildCookRun UAT
 . (Join-Path $PSScriptRoot 'LogValidation.ps1')
 $buildLogProof = @(Assert-SeedForgeLog -Path $consoleLog -AllowedWarnings UE58LocalEnvironment
     Get-ChildItem -LiteralPath $uatDiagnosticRoot -File -Recurse | Where-Object { $_.Extension -in @('.log','.txt') -and $_.Length -gt 0 } | ForEach-Object { Assert-SeedForgeLog -Path $_.FullName -AllowedWarnings UE58LocalEnvironment })
+. (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+$cookLogs = @(Get-ChildItem -LiteralPath $uatDiagnosticRoot -File -Filter 'Cook-*.txt')
+$pakLogs = @(Get-ChildItem -LiteralPath $uatDiagnosticRoot -File -Filter 'UnrealPak_*.txt')
+if ($cookLogs.Count -ne 1 -or $pakLogs.Count -ne 2 -or
+    @($pakLogs | Where-Object { $_.Name -like 'UnrealPak_CreateMultiplePaks-*' }).Count -ne 1 -or
+    @($pakLogs | Where-Object { $_.Name -like 'UnrealPak_CreateIoStoreContainers-*' }).Count -ne 1) {
+    throw 'BuildCookRun requires one Cook and the two complete native Pak/IoStore logs; unexpected scenarios are not accepted.'
+}
+$buildStorageProof = @(
+    $cookLogs | ForEach-Object { Assert-SeedForgeRuntimeStorage -Path $_.FullName -ProjectRoot $projectRoot }
+    $pakLogs | ForEach-Object { Assert-SeedForgeRuntimeStorage -Path $_.FullName -ProjectRoot $projectRoot -RequireDdc:$false }
+)
 
 $executable = Join-Path $packageDir 'Windows/SeedForge.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
@@ -101,6 +116,7 @@ $smokeArguments = @(
     "-abslog=$smokeLog"
 )
 
+$smokeArguments += $runtimeArguments
 $captureStartedAtUtc = [DateTimeOffset]::UtcNow
 Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Ordinary packaged single-capture process' -Action {
     $process = Start-Process -FilePath $executable -ArgumentList $smokeArguments -PassThru -WindowStyle Hidden
@@ -113,6 +129,7 @@ Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Ordinary package
     }
 }
 $smokeLogProof = Assert-SeedForgeLog -Path $smokeLog -AllowedWarnings UE58LocalEnvironment
+$smokeStorageProof = Assert-SeedForgeRuntimeStorage -Path $smokeLog -ProjectRoot $projectRoot -RequireDdc:$false
 if (-not (Select-String -LiteralPath $smokeLog -Pattern 'Applied request=[1-9][0-9]* run=[1-9][0-9]* seed=[0-9]+ hash=[1-9][0-9]* floors=[1-9][0-9]* walls=[1-9][0-9]* gameplay=true\.$' -Quiet)) {
     throw "Packaged demo log is missing the applied-layout marker. See '$smokeLog'."
 }
@@ -145,6 +162,8 @@ $manifest = [ordered]@{
     startedAtUtc = $startedAtUtc.ToString('o')
     buildLogProof = $buildLogProof
     smokeLogProof = $smokeLogProof
+    buildStorageProof = $buildStorageProof
+    smokeStorageProof = $smokeStorageProof
     consoleLog = $consoleLog
     diagnosticRoot = $uatDiagnosticRoot
 }

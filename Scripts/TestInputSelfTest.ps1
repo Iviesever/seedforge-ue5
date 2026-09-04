@@ -32,6 +32,7 @@ $arguments=$prefix+@('-RenderOffscreen','-windowed','-ForceRes','-ResX=1280','-R
     '-unattended','-nosplash','-nosound','-nop4','-culture=en','-SeedForgeInputSelfTest',
     "-SeedForgeSeed=$Seed","-SeedForgeInputTrace=$tracePath","-SeedForgeGitSha=$($verificationContext.SourceRevision)",
     "-userdir=$userRoot","-abslog=$logPath")
+$arguments+=@(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
 $started=[DateTimeOffset]::UtcNow
 $outcome=Invoke-SeedForgeScriptStep -Context $verificationContext -Name "$RunLabel ordinary input process" -Action {
     $process=Start-Process -FilePath $Executable -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -54,8 +55,10 @@ $trace=if((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')){$tr
 $inputProof=Assert-SeedForgeInputSelfTest -Trace $trace -SourceIdentity $verificationContext.SourceRevision -Seed $Seed -ProcessStartedAtUtc $started -ProcessEndedAtUtc $ended
 . (Join-Path $PSScriptRoot 'LogValidation.ps1')
 $logProof=Assert-SeedForgeLog -Path $logPath -AllowedWarnings UE58LocalEnvironment
+. (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+$storageProof=Assert-SeedForgeRuntimeStorage -Path $logPath -ProjectRoot $projectRoot -RequireDdc:($RunLabel -eq 'editor')
 Assert-SeedForgeScriptContext -Context $verificationContext
-$summary=[ordered]@{sourceRevision=$verificationContext.SourceRevision;result=$(if($AllowDirtyDiagnostic){'DiagnosticPassed'}else{'Passed'});runLabel=$RunLabel;seed=$Seed.ToString([Globalization.CultureInfo]::InvariantCulture);executable=$Executable;trace=$tracePath;traceSha256=(Get-FileHash -LiteralPath $tracePath -Algorithm SHA256).Hash.ToLowerInvariant();log=$logPath;logProof=$logProof;inputProof=$inputProof;summaryPath=$summaryPath;processStartedAtUtc=$started.ToString('o');processEndedAtUtc=$ended.ToString('o')}
+$summary=[ordered]@{sourceRevision=$verificationContext.SourceRevision;result=$(if($AllowDirtyDiagnostic){'DiagnosticPassed'}else{'Passed'});runLabel=$RunLabel;seed=$Seed.ToString([Globalization.CultureInfo]::InvariantCulture);executable=$Executable;trace=$tracePath;traceSha256=(Get-FileHash -LiteralPath $tracePath -Algorithm SHA256).Hash.ToLowerInvariant();log=$logPath;logProof=$logProof;storageProof=$storageProof;inputProof=$inputProof;summaryPath=$summaryPath;processStartedAtUtc=$started.ToString('o');processEndedAtUtc=$ended.ToString('o')}
 [IO.File]::WriteAllText($summaryPath,($summary|ConvertTo-Json -Depth 12))
 Assert-SeedForgeScriptContext -Context $verificationContext
 Write-Host "Ordinary $RunLabel input, movement and restart self-test passed: $summaryPath"

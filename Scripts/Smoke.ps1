@@ -42,6 +42,7 @@ $arguments = @(
     "-abslog=$logPath"
 )
 
+$arguments += @(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
 $startedAtUtc = [DateTimeOffset]::UtcNow
 Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Headless smoke process' -Action {
     $process = Start-Process -FilePath $editor -ArgumentList $arguments -PassThru -WindowStyle Hidden
@@ -65,9 +66,11 @@ if (-not (Select-String -LiteralPath $logPath -Pattern 'Success - 0 error\(s\), 
 
 . (Join-Path $PSScriptRoot 'LogValidation.ps1')
 $logProof = Assert-SeedForgeLog -Path $logPath -AllowedWarnings UE58LocalEnvironment
+. (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+$storageProof = Assert-SeedForgeRuntimeStorage -Path $logPath -ProjectRoot $projectRoot
 Assert-SeedForgeScriptContext -Context $verificationContext
 $summaryPath = Join-Path $logRoot "smoke-editor-$timestamp.json"
-$summary = [pscustomobject]@{ sourceRevision=$verificationContext.SourceRevision; result='Passed'; exitCode=0; startedAtUtc=$startedAtUtc.ToString('o'); completedAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); log=$logProof; summaryPath=$summaryPath }
+$summary = [pscustomobject]@{ sourceRevision=$verificationContext.SourceRevision; result='Passed'; exitCode=0; startedAtUtc=$startedAtUtc.ToString('o'); completedAtUtc=[DateTimeOffset]::UtcNow.ToString('o'); log=$logProof; storageProof=$storageProof; summaryPath=$summaryPath }
 [IO.File]::WriteAllText($summaryPath,($summary | ConvertTo-Json -Depth 7))
 Assert-SeedForgeScriptContext -Context $verificationContext
 Write-Host "UnrealEditor-Cmd smoke passed. Log: $logPath"

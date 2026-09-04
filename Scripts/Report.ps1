@@ -61,6 +61,7 @@ function Invoke-SeedForgeReport {
         "-abslog=$logPath"
     ) + $CommandArguments
 
+    $arguments += @(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
     Invoke-SeedForgeScriptStep -Context $verificationContext -Name "Phase2 $Name process" -Action {
         $process = Start-Process -FilePath $editor -ArgumentList $arguments -PassThru -WindowStyle Hidden
         if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
@@ -73,6 +74,8 @@ function Invoke-SeedForgeReport {
     }
     . (Join-Path $PSScriptRoot 'LogValidation.ps1')
     Assert-SeedForgeLog -Path $logPath -AllowedWarnings UE58LocalEnvironment | Out-Null
+    . (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+    $storageProofs.Add((Assert-SeedForgeRuntimeStorage -Path $logPath -ProjectRoot $projectRoot))
     return $logPath
 }
 
@@ -88,6 +91,7 @@ $seedCountText = Convert-ToInvariantString $SeedCount
 $warmupText = Convert-ToInvariantString $Warmup
 
 $logs = [ordered]@{}
+$storageProofs = New-Object 'Collections.Generic.List[object]'
 $logs.generateLeft = Invoke-SeedForgeReport -Name 'generate-left' -CommandArguments @(
     '-Mode=Generate',
     "-Seed=$leftSeedText",
@@ -155,6 +159,7 @@ $summary = [ordered]@{
     diff = $diffPath
     benchmark = $benchmarkPath
     logs = $logs
+    storageProofs = $storageProofs.ToArray()
     benchmarkSamples = $SeedCount
     benchmarkFailures = 0
     benchmarkAggregateHash = [string]$benchmark.aggregateHash
