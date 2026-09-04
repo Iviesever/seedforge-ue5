@@ -133,8 +133,18 @@ function Assert-SeedForgeInputSelfTest {
     }
     $count=UInt $p.observedMoveCount;$aggregateBound=260.0*$p.totalDeltaSeconds+0.1*[double]$count;Number $aggregateBound;Number $sumDistance;Number $sumDelta
     Require ($count -ge 2 -and $count -le (UInt $p.movementSamples[1].sequence)-(UInt $p.movementSamples[0].sequence)+1 -and $p.totalDistance -ge 20 -and $p.totalDeltaSeconds -gt 0 -and $p.totalDistance -le $aggregateBound -and $p.totalDistance+0.1 -ge $sumDistance -and $p.totalDeltaSeconds+0.000001 -ge $sumDelta) 'Invalid movement aggregate.'
-    if($count -eq 2){Require ((Near $p.movementSamples[1].from $p.movementSamples[0].to) -and [math]::Abs($p.totalDistance-$sumDistance) -le 0.1 -and [math]::Abs($p.totalDeltaSeconds-$sumDelta) -le 0.000001) 'Two-sample aggregate not contiguous/exact.'}
-    else{Require ($p.totalDistance-(Distance $p.movementSamples[1].from $p.movementSamples[1].to) -lt 20.0) 'Path kept accumulating after its completion threshold.'}
+    if($count -eq 2){
+        $first=$p.movementSamples[0];$last=$p.movementSamples[1]
+        Require ($last.waypointIndex -le $first.waypointIndex+1 -and ($last.waypointIndex -eq $first.waypointIndex -or (Distance $first.to $p.waypoints[$first.waypointIndex] $true) -le 4.1)) 'Two-sample waypoint advanced without arrival.'
+        Require ((Near $last.from $first.to) -and [math]::Abs($p.totalDistance-$sumDistance) -le 0.1 -and [math]::Abs($p.totalDeltaSeconds-$sumDelta) -le 0.000001) 'Two-sample aggregate not contiguous/exact.'
+    }
+    else{
+        $gap=Distance $p.movementSamples[0].to $p.movementSamples[1].from
+        $hiddenDelta=$p.totalDeltaSeconds-$sumDelta;Number $hiddenDelta
+        $hiddenBound=260.0*[math]::Max(0.0,$hiddenDelta)+0.1*[double]($count-2)+0.1;Number $hiddenBound
+        Require ($p.totalDistance+0.1 -ge $sumDistance+$gap -and $hiddenDelta -ge -0.000001 -and $gap -le $hiddenBound) 'Movement aggregate cannot cover omitted displacement/time.'
+        Require ($p.totalDistance-(Distance $p.movementSamples[1].from $p.movementSamples[1].to) -lt 20.0) 'Path kept accumulating after its completion threshold.'
+    }
     $queueSeeds=@($expectedSeed,$nextSeed,$rapidSeed,$rapidSeed);$priorStates=@('Lost','Playing','Playing','Generating');$lastRequest=UInt $Trace.initial.appliedRequestId;$lastFrame=$startedFrame;$lastTime=$startedAt
     for($i=0;$i -lt 4;$i++){$q=$Trace.queuedRuns[$i];Object $q @('stateBefore','snapshot','frame','atUtc');Snapshot $q.snapshot;Stamp $q.frame $q.atUtc;$s=$q.snapshot
         TextValue $q.stateBefore

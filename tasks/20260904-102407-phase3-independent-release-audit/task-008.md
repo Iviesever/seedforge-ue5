@@ -1,6 +1,6 @@
 # SF-IRA-008 production input, pathing and restart evidence plan
 
-> **Status:** H6 functional GREEN verified by the primary: strict build, focused 11/11, full Automation 114/114, and ordinary Editor native plus external validation. This is diagnostic development evidence, not release certification; the parent subsequently found global Zen/temp writes and paused UE pending boundary remediation. H7 is documentation-only pending review/clean H6 checkpoint and explicit RED/native-write release. No H7 source edits are authorized yet.
+> **Status:** H1–H6 and storage/clean BuildPlugin checkpoints are preserved by the primary. H7 RED is now valid: strict build, focused 4 pass / 3 intended failures with physical/watchdog controls passing, and real PathObservationUnavailable/exit 2 with no captures. The earlier self-Add fixture crash is retained but excluded from RED. H7-G1 is explicitly authorized and source-prepared; stop for primary build/focused/full/Editor verification before claiming GREEN. F/H6/PS source is unchanged by this subtask. No overall release completion is claimed.
 
 **Goal:** Prove actual enemy A* movement and configured WASD/mouse/LMB/Space/R/N behavior, loss/restart identity and actor ownership in the normal packaged gameplay path, without `-SeedForgeGameplaySmoke`.
 
@@ -239,9 +239,9 @@ Physical movement/path samples come only from normal post-actor World observatio
 
 The validator independently regenerates the four model identities and initial canonical cells, recomputes the recorded A* result, validates retained motion samples/aggregate bounds, and requires the full effect/transition/queue/run relationships. This is necessary native evidence, not sufficient release authority. The adapter writes once without replacement; only validated success plus successful write emits the success marker and requests exit 0. Otherwise it emits failure and preserves exit 2. No H7 smoke/capture files or primary-owned Scripts were changed in this handoff.
 
-## H7 additive passive smoke-path plan — approval required
+## H7 additive passive smoke-path plan — RED source released
 
-**Current gate:** documentation only. The primary first reviews/checkpoints H6 and remediates the discovered Zen/temp project-boundary issue before any UE process. H7 source writing requires a separate explicit release. Parent owns all Scripts, UE processes, staging/commits and clean BuildPlugin/package verification.
+**Current gate:** the primary observed complete focused/live RED and explicitly released H7-G1. The real bounded observer, targeted validator and additive JSON are now implemented but not yet UE-verified. Freeze for the primary's build/focused/full/Editor checkpoint. Parent owns all Scripts, UE processes, staging/commits and clean BuildPlugin/package verification.
 
 **Goal:** gameplay-smoke cannot request its first screenshot or publish Passed before a genuine same-run A* route and at least two actual enemy moves totaling 20 units have been observed. Ordinary input remains separate; no input/actor setup or combat behavior is added here.
 
@@ -256,7 +256,7 @@ Recommended: a small noncopyable RAII passive observer in the existing GameplayS
 - Extend `Plugins/SeedForge/Source/SeedForgeTests/Private/SeedForgeGameplaySmokeTests.cpp`; reuse the existing input World fixture without editing it.
 - Update this plan and `sf-ira-008-evidence.md`. No new Runtime file/UObject, no H6 input-source edits, no F capture lifecycle/receipt changes.
 
-Proposed interfaces (plan, not source):
+Interfaces implemented after the observed RED gate:
 
 ```cpp
 // FSeedForgeGameplaySmokeTrace additions
@@ -297,6 +297,8 @@ Keep `seedforge.gameplay-smoke`, schemaVersion 1 and all existing fields/receipt
 
 Require nonzero top `runGeneration`/`appliedRequestId`, equal path run/source request and equal all three F receipt run/source IDs. Stable ID must identify an initially counted enemy. Recompute the recorded A* request using canonical cells and the existing 1024 budget; require exact status/path/expanded-node match, cardinal walkable route and 200-unit/height-58 waypoint conversion. Retained samples must be finite, same revision, increasing sequence/frames, consumed-waypoint/route-consistent, and each distance <=260*delta+0.1. Aggregate count/distance/time must be finite/consistent; count>=2 and distance>=20. Use H5's existing proof rules, not new movement timing.
 
+For count==2, both observed moves are retained: require contiguous positions, index advance at most one, and distance from the first end to its consumed target <=4.1 when advancing. For count>2, retain nonadjacent first/latest compatibility but require the omitted gap to fit both aggregate budgets: `TotalDistance+0.1 >= retainedDistanceSum+Gap`, `HiddenDt >= -1e-6`, and `Gap <= 260*max(0,HiddenDt)+0.1*(count-2)+0.1`, where Gap is first.to to last.from and HiddenDt is total delta minus retained deltas. This is a straight-line lower bound, not invented intermediate samples. The primary aligned the external validators to these exact tolerances.
+
 Both retained movement frames must be <= `captures[0].requestedFrame`. That request happens only after proof completion; equality is valid when proof and request occur in one engine frame. Existing F receipts stay exactly start/combat/win, with requested<=rendered<=captured<=completed and matching same-run IDs. No extra capture/receipt is manufactured. H7 does not substitute for PNG/process/source validation in parent-owned Scripts.
 
 `ValidatePathEvidence` rejects absent/incomplete/oversized/nonfinite/off-route/wrong-revision/wrong-run proof, proof after the first request, missing/reordered/wrong-ID receipt correlation and nonzero passive bindings. CompleteGameplaySmoke validates before setting success/printing its marker. ExportCanonicalJson must fail closed if bSuccess is asserted without valid path proof, using `MissingPathEvidence`; already failed traces retain their existing failure. Invalid numeric evidence in failed JSON is null, not NaN/Infinity. Preserve exact uint64 encoding and existing string escaping.
@@ -316,9 +318,9 @@ Keep one existing 30-second whole-smoke watchdog. Do not create a proof timer or
 
 ### RED-first stages after explicit source release
 
-- [ ] **H7-R1 — Tests/scaffolds:** add four tests: `SeedForge.GameplaySmoke.PathEvidenceAcceptsCompleteSynthetic`, `PathEvidenceRejectsTampering`, `PathEvidenceSchema`, `PassiveObserverUsesRealWorldAndCleansUp`. Compile scaffolds return false/empty from Start/validation and produce no successful observation. The positive value fixture uses actual pure model/A* plus clearly synthetic two moves and three F-shaped receipts, never written as runtime proof. Negative cases remove path/sample, use 19 units, stale run/request/revision, nonfinite/off-route/overspeed movement, oversized arrays, wrong receipt ID, movement after first request, or nonzero bindings.
-- [ ] **H7-R2 — Preserve controls:** upgrade the old success-codec fixture to a complete synthetic proof/three receipts while retaining schema/hash/count/order assertions. Retain maximum uint64 encoding on a separate failed metadata value rather than pretending inconsistent seed/hash metadata is successful evidence. Failure escaping/code controls remain. The real observer test uses existing FWorldFixture/normal latent ticks once per actual GFrameCounter, cap 120; timer/physical controls must pass independently of absent observer proof. Add Cancel/restart/no-stale-proof and zero-handle assertions; never manually tick Enemy or call ReplanEnemies.
-- [ ] **H7-R3 — Live fail-closed gate:** wire AwaitPathProof to the scaffold and stop. Parent strict-builds, runs focused tests and real Editor gameplay smoke. Since scaffold Start returns false, expected live RED is typed PathObservationUnavailable/exit 2 with no first capture/receipt, not an outer timeout. The unchanged 30-second watchdog remains the later bound for an observer that starts but never completes. A compile/fixture error is not accepted as RED. Preserve exact reports.
+- [x] **H7-R1 — Tests/scaffolds:** add four tests: `SeedForge.GameplaySmoke.PathEvidenceAcceptsCompleteSynthetic`, `PathEvidenceRejectsTampering`, `PathEvidenceSchema`, `PassiveObserverUsesRealWorldAndCleansUp`. Compile scaffolds return false/empty from Start/validation and produce no successful observation. The positive value fixture uses actual pure model/A* plus clearly synthetic two moves and three F-shaped receipts, never written as runtime proof. Negative cases remove path/sample, use 19 units, stale run/request/revision, nonfinite/off-route/overspeed movement, oversized arrays, wrong receipt ID, movement after first request, or nonzero bindings.
+- [x] **H7-R2 — Preserve controls:** upgrade the old success-codec fixture to a complete synthetic proof/three receipts while retaining schema/hash/count/order assertions. Retain maximum uint64 encoding on a separate failed metadata value rather than pretending inconsistent seed/hash metadata is successful evidence. Failure escaping/code controls remain. The real observer test uses existing FWorldFixture/normal latent ticks once per actual GFrameCounter, cap 120; timer/physical controls must pass independently of absent observer proof. Add Cancel/restart/no-stale-proof and zero-handle assertions; never manually tick Enemy or call ReplanEnemies.
+- [x] **H7-R3 — Live fail-closed gate:** wire AwaitPathProof to the scaffold and stop. Parent strict-builds, runs focused tests and real Editor gameplay smoke. Since scaffold Start returns false, expected live RED is typed PathObservationUnavailable/exit 2 with no first capture/receipt, not an outer timeout. The unchanged 30-second watchdog remains the later bound for an observer that starts but never completes. A compile/fixture error is not accepted as RED. Preserve exact reports.
 - [ ] **H7-G1 — Minimum implementation after observed RED:** implement observer + targeted path validation/JSON + lifecycle/gate. No H6 input or F component edit. Stop for parent focused/full/Editor smoke.
 - [ ] **H7-G2 — Parent final checks:** fresh Editor and packaged smoke must prove actual path before first capture, three fresh validated F receipts/PNGs, zero passive/capture handles, matching run/request/frames, strict logs and clean revision/process boundaries. Rerun H6 ordinary input separately. BuildPlugin/packaging/source certification remain separate G gates, not implied by H7.
 
@@ -334,4 +336,24 @@ Parent commands after boundary and source gates are released:
 .\Scripts\TestInputSelfTest.ps1 -AllowDirtyDiagnostic
 ```
 
-This document is the review handoff, not permission for this sub-agent to run those commands or start H7 source changes.
+These commands remain parent-only. H7-G1 source authorization does not authorize this sub-agent to execute UE or claim GREEN without primary results.
+
+### H7 GREEN-source handoff after observed RED
+
+The primary's corrected report `automation-20260904-185054-a42335c52d284a8094a5e63b96ea1441` is 4 pass / 0 warning-success / 3 fail: observer 8 expected assertions, acceptance 2, schema 9. Physical controls report 120 World ticks, 118 timer firings and 502.666685 units; watchdog lifecycle passes. Earlier `184620` exit 3 was a TArray self-element Add fixture assertion, not valid RED. The primary changed it to a local FIntPoint copy before Add; that correction is preserved. Real `Gameplay/20260904-184729-9b8302d66c5e4612af6b68c285792779` records PathObservationUnavailable, Generating/Playing/Failed, exit 2, zero receipts/PNGs and valid owned storage.
+
+After authorization, Start now observes the real owned enemy through exactly three delegates. It feeds the existing H5 proof on normal path-applied/World-post boundaries, enforces strictly advancing retained frame observations, and detaches on completion while retaining frozen evidence. Cancel/queued restart/owner cleanup remove handles and reset identities. The existing Coordinator gate waits for proof; invalidated ownership fails closed. No setup, AI/input/attack call or timing growth is added.
+
+The codec now serializes bounded path/walkable/binding fields, recomputes the native A* result and checks receipt correlation, samples, arrival and aggregate bounds. Failed nonfinite data emits null, and asserted success without valid path cannot emit Passed. Tests add a valid nonadjacent first5/hidden8/last10 observation and two reported aggregate counterexamples (distance gap and hidden time) without adding sample history. The primary had reproduced the aggregate defects as external-validator RED; no separate native result for these added cases is claimed yet.
+
+Stop for primary strict build, all seven focused smoke tests, full Automation and fresh Editor gameplay smoke plus external path/PNG/storage validation. Source identities for that run follow current parent HEAD (now beyond the RED f235e46 checkpoint). H6 native, F components and PS files are unchanged by this implementation.
+
+### Historical H7 RED-source handoff details
+
+Exactly the five allocated native/test files are changed, plus this task/evidence. Start/ValidatePathEvidence return false; the observer subscribes to nothing and retains no proof. The existing JSON exporter is deliberately not extended yet, so the new schema/fail-closed codec expectations discriminate missing GREEN behavior. The real Coordinator is fail-closed independently: StartGameplaySmoke enters AwaitPathProof and rejects the false Start with PathObservationUnavailable before requesting any screenshot. CompleteGameplaySmoke also requires the false validator before success.
+
+Focused namespace now has seven tests: existing SuccessTrace/FailureTrace, four planned path tests, and the approved watchdog lifecycle test. Source-level expectation is four passing controls and three failing tests (acceptance, schema, real observer); expected assertion failures are 2 + 9 + 8 respectively, subject to actual primary execution. Timer/physical controls must pass; compilation or fixture errors do not count as valid RED.
+
+The primary approved a WITH_DEV_AUTOMATION_TESTS-only friend seam for the watchdog test, defined only in GameplaySmokeTests.cpp. It arms an actual World timer in the existing handle, advances two distinct engine-frame World ticks, then checks elapsed/remaining/original deadline survive preserving cleanup exactly. Default cleanup, queued restart, actual EnterRunFailure and actor-destruction EndPlay must clear the timer. No global command line or live run-state/HP/hash/identity is assigned. This is a private lifecycle unit contract, not a real 30-second smoke measurement.
+
+Source investigation found same-run ApplyGeneratedLayout previously cleared StartRun's watchdog through ClearRunObjects, and StartGameplaySmoke then re-armed it. The approved minimal lifecycle correction adds private `ClearRunObjects(bool bPreserveSmokeWatchdog=false)`, passes true only for smoke same-run apply, preserves the original timer there, and removes the later re-arm. Restart/failure/EndPlay use default clearing. The 30-second value and all F deadlines are unchanged.

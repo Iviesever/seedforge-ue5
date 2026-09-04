@@ -31,9 +31,14 @@ Case 'path first move starts wrong cell' {$t.pathEvidence.movementSamples[0].fro
 Case 'path from not finite' {$t.pathEvidence.movementSamples[0].from.x=[double]::NaN}
 Case 'path aggregate skips sequence capacity' {$t.pathEvidence.observedMoveCount='18446744073709551615'}
 Case 'path retained samples noncontiguous at count two' {$t.pathEvidence.movementSamples[1].from.y=980;$t.pathEvidence.movementSamples[1].to.y=970}
+Case 'path count two advances before waypoint arrival' {$p=$t.pathEvidence;$p.cells+=@([pscustomobject]@{x=45;y=3});$p.goal=[pscustomobject]@{x=45;y=3};$p.waypoints+=@([pscustomobject]@{x=9000;y=600;z=58});$p.movementSamples[1].waypointIndex=1;$p.movementSamples[1].target.y=600}
+Case 'path count two skips waypoint' {$p=$t.pathEvidence;$p.cells+=@([pscustomobject]@{x=45;y=3},[pscustomobject]@{x=45;y=2});$p.goal=[pscustomobject]@{x=45;y=2};$p.waypoints+=@([pscustomobject]@{x=9000;y=600;z=58},[pscustomobject]@{x=9000;y=400;z=58});$p.movementSamples[1].waypointIndex=2;$p.movementSamples[1].target.y=400}
+Case 'path count two advances after arrival' {$p=$t.pathEvidence;$p.cells+=@([pscustomobject]@{x=45;y=3});$p.goal=[pscustomobject]@{x=45;y=3};$p.waypoints+=@([pscustomobject]@{x=9000;y=600;z=58});$p.movementSamples[0].from.y=900.05;$p.movementSamples[0].to.y=800.05;$p.movementSamples[0].deltaSeconds=0.5;$p.movementSamples[1].from.y=800.05;$p.movementSamples[1].to.y=790.05;$p.movementSamples[1].target.y=600;$p.movementSamples[1].waypointIndex=1;$p.totalDistance=110;$p.totalDeltaSeconds=0.55} $true
 Case 'canonical uint rejects trailing newline' {$t.inputEvents[0].injectedFrame="20`n"}
 Case 'field spelling is case sensitive' {$t.PSObject.Properties.Remove('schema');$t | Add-Member NoteProperty Schema 'seedforge.input-selftest'}
 Case 'path continued accumulating after completion' {$p=$t.pathEvidence;$p.movementSamples[1].sequence='3';$p.movementSamples[1].from.y=980;$p.movementSamples[1].to.y=970;$p.observedMoveCount='3';$p.totalDistance=30;$p.totalDeltaSeconds=0.15}
+Case 'path aggregate hides impossible gap distance' {$p=$t.pathEvidence;$p.movementSamples[0].to.y=995;$p.movementSamples[1].sequence='3';$p.movementSamples[1].from.y=850;$p.movementSamples[1].to.y=840;$p.observedMoveCount='3';$p.totalDistance=20;$p.totalDeltaSeconds=0.15}
+Case 'path aggregate hides impossible gap time' {$p=$t.pathEvidence;$p.movementSamples[0].to.y=995;$p.movementSamples[1].sequence='3';$p.movementSamples[1].from.y=987;$p.movementSamples[1].to.y=977;$p.observedMoveCount='3';$p.totalDistance=23;$p.totalDeltaSeconds=0.100001}
 Case 'native normalizes revision but retains input identity case' {$t.sourceIdentity=$t.sourceIdentity.ToUpperInvariant();$argsForCall.SourceIdentity=$t.sourceIdentity} $true
 Case 'dash finite inputs overflow derived motion' {$t.inputEvents[8].after.x=1e308;$t.inputEvents[8].after.y=1e308}
 Case 'dash excessive motion' {$t.inputEvents[8].after.x=9300;$t.inputEvents[8].after.y=1100}

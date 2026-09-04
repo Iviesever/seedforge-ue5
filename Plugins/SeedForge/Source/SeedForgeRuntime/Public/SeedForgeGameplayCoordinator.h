@@ -17,6 +17,10 @@ class ASeedForgePlayerCharacter;
 class ASeedForgePreviewActor;
 class USeedForgeGameplayCaptureComponent;
 
+#if WITH_DEV_AUTOMATION_TESTS
+namespace SeedForge::GameplaySmokeTests { struct FWatchdogAccess; }
+#endif
+
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FSeedForgeRunStateChanged,
     ESeedForgeRunState, ESeedForgeRunState, const FSeedForgeGameplaySnapshot&);
 DECLARE_MULTICAST_DELEGATE_TwoParams(FSeedForgeRunQueued,
@@ -54,10 +58,13 @@ protected:
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+#if WITH_DEV_AUTOMATION_TESTS
+    friend struct SeedForge::GameplaySmokeTests::FWatchdogAccess;
+#endif
     void NotifyRunStateChanged(ESeedForgeRunState PreviousState);
     bool ApplyGeneratedLayout(const FSeedForgeLayout& InLayout, uint64 SourceRequestId);
     void HandleGenerationApplied(const FSeedForgeAsyncCompletion& Completion);
-    void ClearRunObjects();
+    void ClearRunObjects(bool bPreserveSmokeWatchdog = false);
     void TickInteractions();
     void ReplanEnemies();
     void EnterTerminalState();
@@ -68,6 +75,7 @@ private:
     void HandleCaptureCompleted(const FSeedForgeCaptureReceipt& Receipt);
     void HandleCaptureFailed(const FString& Error);
     void StartGameplaySmoke();
+    bool IsGameplaySmokePathObservationInvalidated() const;
     void AdvanceGameplaySmoke();
     void TeleportSmokePlayer(const FIntPoint& Cell);
     void GameplaySmokeWatchdog();
@@ -80,6 +88,7 @@ private:
     enum class EGameplaySmokeStage : uint8
     {
         Disabled,
+        AwaitPathProof,
         WaitingStartCapture,
         PrepareCombat,
         Attack,
@@ -124,6 +133,7 @@ private:
     FString GameplaySmokeCaptureDirectory;
     FString GameplaySmokeGitSha;
     FSeedForgeGameplaySmokeTrace GameplaySmokeTrace;
+    FSeedForgeGameplaySmokePathObserver GameplaySmokePathObserver;
     FTimerHandle GameplaySmokeTimer;
     FTimerHandle GameplaySmokeWatchdogTimer;
 

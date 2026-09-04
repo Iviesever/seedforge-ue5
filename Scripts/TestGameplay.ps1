@@ -129,6 +129,8 @@ if (@($actions | Where-Object { $_ -like 'Attack:Enemy:*' }).Count -ne 1 -or
     throw "Gameplay smoke trace does not prove attack/kill/3 Core/unlock/exit actions: $($actions -join ',')"
 }
 
+. (Join-Path $PSScriptRoot 'GameplayPathValidation.ps1')
+$pathProof = Assert-SeedForgeGameplayPath -Trace $trace
 . (Join-Path $PSScriptRoot 'CaptureValidation.ps1')
 $validatedScreenshots = @(Assert-SeedForgeGameplayCaptures -Trace $trace -RunDirectory $runMediaRoot `
     -ProcessStartedAtUtc $processStartedAtUtc -ProcessEndedAtUtc $processEndedAtUtc)
@@ -160,6 +162,7 @@ $summary = [ordered]@{
     screenshots = $trace.screenshots
     captures = $trace.captures
     validatedScreenshots = $validatedScreenshots
+    pathProof = $pathProof
     visualReview = 'not-assessed-by-script'
     log = $logPath
     logProof = $logProof

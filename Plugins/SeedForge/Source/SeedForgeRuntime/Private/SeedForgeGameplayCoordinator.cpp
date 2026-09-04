@@ -187,7 +187,8 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(
         return false;
     }
 
-    ClearRunObjects();
+    // Same-run apply must not restart the budget armed by StartRun.
+    ClearRunObjects(bGameplaySmokeMode);
     Layout = InLayout;
     EncounterPlan = Planned.Plan;
     Seed = Layout.Seed;
@@ -585,15 +586,16 @@ void ASeedForgeGameplayCoordinator::HandleGenerationApplied(
     ApplyGeneratedLayout(Completion.Result.Layout, Completion.RequestId);
 }
 
-void ASeedForgeGameplayCoordinator::ClearRunObjects()
+void ASeedForgeGameplayCoordinator::ClearRunObjects(bool bPreserveSmokeWatchdog)
 {
+    GameplaySmokePathObserver.Cancel();
     CaptureComponent->CancelCapture();
     if (UWorld* World = GetWorld())
     {
         World->GetTimerManager().ClearTimer(InteractionTimer);
         World->GetTimerManager().ClearTimer(RepathTimer);
         World->GetTimerManager().ClearTimer(GameplaySmokeTimer);
-        World->GetTimerManager().ClearTimer(GameplaySmokeWatchdogTimer);
+        if (!bPreserveSmokeWatchdog) { World->GetTimerManager().ClearTimer(GameplaySmokeWatchdogTimer); }
     }
     for (ASeedForgeCorePickup* Core : CoreActors)
     {
@@ -830,6 +832,7 @@ void ASeedForgeGameplayCoordinator::EnterRunFailure(
 
 void ASeedForgeGameplayCoordinator::InitializeGameplaySmokeTrace()
 {
+    GameplaySmokePathObserver.Cancel();
     GameplaySmokeTrace = {};
     GameplaySmokeTrace.GitSha = GameplaySmokeGitSha;
     GameplaySmokeTrace.EngineVersion = FEngineVersion::Current().ToString();
@@ -977,20 +980,25 @@ void ASeedForgeGameplayCoordinator::StartGameplaySmoke()
     }
 
     GameplaySmokeCoreIndex = 0;
-    GameplaySmokeStage = EGameplaySmokeStage::WaitingStartCapture;
+    GameplaySmokeStage = EGameplaySmokeStage::AwaitPathProof;
+    if (WalkableCells.Num() > FSeedForgeGameplaySmokeTrace::MaxWalkableCells)
+    {
+        FailGameplaySmoke(TEXT("PathObservationUnavailable"), TEXT("Canonical walkable evidence exceeds its bound."));
+        return;
+    }
+    GameplaySmokeTrace.WalkableCells = WalkableCells;
+    if (!GameplaySmokePathObserver.Start(*this))
+    {
+        FailGameplaySmoke(TEXT("PathObservationUnavailable"), TEXT("Passive path observation could not start before the first capture."));
+        return;
+    }
     GetWorldTimerManager().SetTimer(
         GameplaySmokeTimer,
         this,
         &ASeedForgeGameplayCoordinator::AdvanceGameplaySmoke,
         0.1f,
         true);
-    GetWorldTimerManager().SetTimer(
-        GameplaySmokeWatchdogTimer,
-        this,
-        &ASeedForgeGameplayCoordinator::GameplaySmokeWatchdog,
-        30.0f,
-        false);
-    RequestSmokeScreenshot(TEXT("start"));
+    // The existing StartRun watchdog is preserved across apply, never re-armed here.
 }
 
 void ASeedForgeGameplayCoordinator::TeleportSmokePlayer(const FIntPoint& Cell)
@@ -1009,6 +1017,29 @@ void ASeedForgeGameplayCoordinator::AdvanceGameplaySmoke()
     const double Now = GetWorld()->GetTimeSeconds();
     switch (GameplaySmokeStage)
     {
+    case EGameplaySmokeStage::AwaitPathProof:
+        if (RunState.GetState() != ESeedForgeRunState::Playing
+            || RunGeneration != GameplaySmokeTrace.RunGeneration || AppliedRequestId != GameplaySmokeTrace.AppliedRequestId
+            || IsGameplaySmokePathObservationInvalidated())
+        {
+            FailGameplaySmoke(TEXT("PathObservationInvalidated"), TEXT("Run identity or passive observation was invalidated before completion."));
+            break;
+        }
+        if (GameplaySmokePathObserver.IsComplete())
+        {
+            GameplaySmokeTrace.PathEvidence = GameplaySmokePathObserver.GetEvidence();
+            GameplaySmokeTrace.RemainingPathDelegateBindings = GameplaySmokePathObserver.GetRemainingDelegateBindings();
+            if (GameplaySmokeTrace.RemainingPathDelegateBindings != 0
+                || GameplaySmokeTrace.PathEvidence.RunGeneration != RunGeneration
+                || GameplaySmokeTrace.PathEvidence.SourceRequestId != AppliedRequestId)
+            {
+                FailGameplaySmoke(TEXT("PathObservationInvalidated"), TEXT("Completed path evidence retained bindings or stale identity."));
+                break;
+            }
+            GameplaySmokeStage = EGameplaySmokeStage::WaitingStartCapture;
+            RequestSmokeScreenshot(TEXT("start"));
+        }
+        break;
     case EGameplaySmokeStage::WaitingStartCapture:
     case EGameplaySmokeStage::WaitingCombatCapture:
     case EGameplaySmokeStage::WaitingWinCapture:
@@ -1161,6 +1192,11 @@ void ASeedForgeGameplayCoordinator::AdvanceGameplaySmoke()
     }
 }
 
+bool ASeedForgeGameplayCoordinator::IsGameplaySmokePathObservationInvalidated() const
+{
+    return !GameplaySmokePathObserver.IsComplete() && GameplaySmokePathObserver.GetRemainingDelegateBindings() != 3;
+}
+
 void ASeedForgeGameplayCoordinator::GameplaySmokeWatchdog()
 {
     FailGameplaySmoke(TEXT("SmokeTimeout"), TEXT("Gameplay smoke exceeded its 30 second runtime budget."));
@@ -1181,6 +1217,14 @@ void ASeedForgeGameplayCoordinator::CompleteGameplaySmoke()
 {
     if (bSmokeExitRequested)
     {
+        return;
+    }
+    GameplaySmokeTrace.RemainingPathDelegateBindings = GameplaySmokePathObserver.GetRemainingDelegateBindings();
+    GameplaySmokePathObserver.Cancel();
+    FString PathError;
+    if (!FSeedForgeGameplaySmokeCodec::ValidatePathEvidence(GameplaySmokeTrace, PathError))
+    {
+        FailGameplaySmoke(TEXT("MissingPathEvidence"), PathError);
         return;
     }
     GameplaySmokeStage = EGameplaySmokeStage::Complete;
@@ -1210,6 +1254,7 @@ void ASeedForgeGameplayCoordinator::FailGameplaySmoke(
     const TCHAR* FailureCode,
     const FString& FailureMessage)
 {
+    GameplaySmokePathObserver.Cancel();
     if (bSmokeExitRequested || GameplaySmokeStage == EGameplaySmokeStage::Failed)
     {
         return;
