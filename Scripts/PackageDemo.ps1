@@ -2,13 +2,16 @@
 param(
     [string]$EngineRoot = 'D:\program\UnrealEngine\Epic Games\UE_5.8',
     [UInt64]$SmokeSeed = 24301,
-    [int]$SmokeTimeoutSeconds = 300
+    [int]$SmokeTimeoutSeconds = 300,
+    [string]$ExpectedRevision
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'VerificationContract.ps1')
+$verificationContext = New-SeedForgeScriptContext -ProjectRoot $projectRoot -Parameters $PSBoundParameters
 $projectFile = Join-Path $projectRoot 'SeedForge.uproject'
 $pluginFile = Join-Path $projectRoot 'Plugins\SeedForge\SeedForge.uplugin'
 $runUat = Join-Path $EngineRoot 'Engine\Build\BatchFiles\RunUAT.bat'
@@ -32,7 +35,7 @@ if ([string]::IsNullOrWhiteSpace($version)) {
     throw "SeedForge.uplugin has no VersionName."
 }
 
-$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$timestamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N')
 $packageDir = Join-Path $packageRoot "SeedForge-Win64-$timestamp"
 $consoleLog = Join-Path $logRoot "package-demo-$timestamp.log"
 $uatDiagnosticRoot = Join-Path $logRoot "uat-demo-$timestamp"
@@ -58,25 +61,29 @@ $arguments = @(
     '-utf8output',
     '-NoCodeSign'
     '-UbtArgs=-UBADisableRemote'
+    '-AdditionalCookerOptions=-culture=en'
 )
 
-& $runUat @arguments 2>&1 | Tee-Object -FilePath $consoleLog
-$exitCode = $LASTEXITCODE
-if ($exitCode -ne 0) {
-    throw "BuildCookRun failed with exit code $exitCode. See '$consoleLog'."
+$startedAtUtc = [DateTimeOffset]::UtcNow
+Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'BuildCookRun UAT process' -Action {
+    & $runUat @arguments 2>&1 | Tee-Object -FilePath $consoleLog | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        throw "BuildCookRun failed with exit code $LASTEXITCODE. See '$consoleLog'."
+    }
 }
+. (Join-Path $PSScriptRoot 'LogValidation.ps1')
+$buildLogProof = @(Assert-SeedForgeLog -Path $consoleLog -AllowedWarnings UE58LocalEnvironment
+    Get-ChildItem -LiteralPath $uatDiagnosticRoot -File -Recurse | Where-Object { $_.Extension -in @('.log','.txt') -and $_.Length -gt 0 } | ForEach-Object { Assert-SeedForgeLog -Path $_.FullName -AllowedWarnings UE58LocalEnvironment })
 
-$executable = Get-ChildItem -File -Recurse -LiteralPath $packageDir -Filter 'SeedForge.exe' |
-    Select-Object -First 1 -ExpandProperty FullName
-if ([string]::IsNullOrWhiteSpace($executable)) {
+$executable = Join-Path $packageDir 'Windows/SeedForge.exe'
+if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "BuildCookRun succeeded without a SeedForge.exe under '$packageDir'."
 }
 
 $smokeLog = Join-Path $logRoot "smoke-packaged-$timestamp.log"
+$mediaRoot = Join-Path $mediaRoot "PackagedSingle/$timestamp"
+New-Item -ItemType Directory -Path $mediaRoot | Out-Null
 $smokeCapture = Join-Path $mediaRoot "SeedForge-Packaged-$SmokeSeed.png"
-if (Test-Path -LiteralPath $smokeCapture) {
-    Remove-Item -LiteralPath $smokeCapture
-}
 $smokeArguments = @(
     '-RenderOffscreen',
     '-windowed',
@@ -89,19 +96,23 @@ $smokeArguments = @(
     '-unattended',
     '-nosplash',
     '-nosound',
+    '-culture=en',
     "-userdir=$packageUserRoot",
     "-abslog=$smokeLog"
 )
 
 $captureStartedAtUtc = [DateTimeOffset]::UtcNow
-$process = Start-Process -FilePath $executable -ArgumentList $smokeArguments -PassThru -WindowStyle Hidden
-if (-not $process.WaitForExit($SmokeTimeoutSeconds * 1000)) {
-    $process.Kill($true)
-    throw "Packaged demo smoke timed out after $SmokeTimeoutSeconds seconds. See '$smokeLog'."
+Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Ordinary packaged single-capture process' -Action {
+    $process = Start-Process -FilePath $executable -ArgumentList $smokeArguments -PassThru -WindowStyle Hidden
+    if (-not $process.WaitForExit($SmokeTimeoutSeconds * 1000)) {
+        $process.Kill($true)
+        throw "Packaged demo smoke timed out after $SmokeTimeoutSeconds seconds. See '$smokeLog'."
+    }
+    if ($process.ExitCode -ne 0) {
+        throw "Packaged demo smoke failed with exit code $($process.ExitCode). See '$smokeLog'."
+    }
 }
-if ($process.ExitCode -ne 0) {
-    throw "Packaged demo smoke failed with exit code $($process.ExitCode). See '$smokeLog'."
-}
+$smokeLogProof = Assert-SeedForgeLog -Path $smokeLog -AllowedWarnings UE58LocalEnvironment
 if (-not (Select-String -LiteralPath $smokeLog -Pattern 'Applied request=[1-9][0-9]* run=[1-9][0-9]* seed=[0-9]+ hash=[1-9][0-9]* floors=[1-9][0-9]* walls=[1-9][0-9]* gameplay=true\.$' -Quiet)) {
     throw "Packaged demo log is missing the applied-layout marker. See '$smokeLog'."
 }
@@ -112,14 +123,16 @@ if (-not (Select-String -LiteralPath $smokeLog -Pattern 'Gameplay capture comple
 }
 
 $zipPath = Join-Path $releaseRoot "SeedForgeDemo-Win64-$version-$timestamp.zip"
-Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $zipPath -CompressionLevel Optimal
+Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Win64 archive creation' -Action {
+    Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $zipPath -CompressionLevel Optimal
+}
 $hash = Get-FileHash -LiteralPath $zipPath -Algorithm SHA256
 $checksumPath = "$zipPath.sha256"
 [System.IO.File]::WriteAllText($checksumPath, "$($hash.Hash.ToLowerInvariant())  $([System.IO.Path]::GetFileName($zipPath))`r`n")
 
 $manifest = [ordered]@{
     createdAt = (Get-Date).ToString('o')
-    sourceRevision = (git -C $projectRoot rev-parse HEAD).Trim()
+    sourceRevision = $verificationContext.ExpectedRevision
     version = $version
     packageDirectory = $packageDir
     executable = $executable
@@ -128,11 +141,22 @@ $manifest = [ordered]@{
     smokePngProof = $smokePngProof
     archive = $zipPath
     sha256 = $hash.Hash.ToLowerInvariant()
+    result = 'Passed'
+    startedAtUtc = $startedAtUtc.ToString('o')
+    buildLogProof = $buildLogProof
+    smokeLogProof = $smokeLogProof
+    consoleLog = $consoleLog
+    diagnosticRoot = $uatDiagnosticRoot
 }
-$manifestPath = Join-Path $packageRoot 'last-package.json'
+$manifestPath = Join-Path $packageRoot "package-$timestamp.json"
+Assert-SeedForgeScriptContext -Context $verificationContext
 [System.IO.File]::WriteAllText(
     $manifestPath,
-    ($manifest | ConvertTo-Json -Depth 4) + "`r`n")
+    ($manifest | ConvertTo-Json -Depth 9) + "`r`n")
+$verifiedManifest = Assert-SeedForgeArtifactManifest -Context $verificationContext -ManifestPath $manifestPath
+Assert-SeedForgeScriptContext -Context $verificationContext
+Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $packageRoot 'last-package.json')
+Assert-SeedForgeScriptContext -Context $verificationContext
 
 Write-Host "SeedForge Win64 package and smoke passed."
 Write-Host "Executable: $executable"
@@ -140,3 +164,4 @@ Write-Host "Screenshot: $smokeCapture"
 Write-Host "Archive: $zipPath"
 Write-Host "SHA256: $($hash.Hash.ToLowerInvariant())"
 Write-Host "Manifest: $manifestPath"
+return $verifiedManifest

@@ -153,7 +153,7 @@ function Invoke-SeedForgeVerifiedStep {
 }
 
 function Get-SeedForgeArtifactFile {
-    param([string]$ProjectRoot, [string]$Path, [string]$Label)
+    param([string]$ProjectRoot, [string]$Path, [string]$Label, [switch]$AllowDirectory)
     if ([string]::IsNullOrWhiteSpace($Path)) { throw "Artifact $Label path is missing." }
     if ([IO.Path]::IsPathRooted($Path)) { $fullPath = [IO.Path]::GetFullPath($Path) }
     else { $fullPath = [IO.Path]::GetFullPath((Join-Path $ProjectRoot $Path)) }
@@ -170,7 +170,7 @@ function Get-SeedForgeArtifactFile {
         $file = Get-Item -LiteralPath $ancestor -Force -ErrorAction Stop
         if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw "Artifact $Label traverses a reparse point: '$ancestor'." }
     }
-    if ($file -isnot [IO.FileInfo]) { throw "Artifact $Label must be a file: '$fullPath'." }
+    if ($file -isnot [IO.FileInfo] -and -not ($AllowDirectory -and $file -is [IO.DirectoryInfo])) { throw "Artifact $Label must be a file: '$fullPath'." }
     return $file
 }
 
@@ -182,6 +182,9 @@ function Assert-SeedForgeArtifactManifest {
         [AllowNull()][AllowEmptyString()][string]$ChecksumPath
     )
     $ErrorActionPreference = 'Stop'
+    if ($Context.PSObject.Properties['IsDiagnostic'] -and $Context.IsDiagnostic) {
+        throw 'A diagnostic context cannot certify an artifact manifest.'
+    }
     $explicitChecksum = $PSBoundParameters.ContainsKey('ChecksumPath')
     Invoke-SeedForgeVerifiedStep -Context $Context -Name 'artifact manifest validation' -Action {
         $manifestFile = Get-SeedForgeArtifactFile $Context.ProjectRoot $ManifestPath 'manifest'
@@ -212,5 +215,299 @@ function Assert-SeedForgeArtifactManifest {
         $manifest | Add-Member -NotePropertyName ManifestPath -NotePropertyValue $manifestFile.FullName -Force
         $manifest | Add-Member -NotePropertyName ChecksumPath -NotePropertyValue $checksum.FullName -Force
         return $manifest
+    }
+}
+
+function New-SeedForgeScriptContext {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ProjectRoot, [Parameter(Mandatory)]$Parameters)
+    $ErrorActionPreference = 'Stop'
+    $expectedArguments = @{}
+    if ($Parameters.Keys -contains 'ExpectedRevision') {
+        if ($Parameters.ExpectedRevision -cnotmatch '\A[0-9a-fA-F]{40}\z') {
+            throw 'An explicit ExpectedRevision must be a complete 40-hex Git revision.'
+        }
+        $expectedArguments.ExpectedRevision = $Parameters.ExpectedRevision
+    }
+    $diagnostic = ($Parameters.Keys -contains 'AllowDirtyDiagnostic') -and [bool]$Parameters.AllowDirtyDiagnostic
+    if (-not $diagnostic) {
+        $context = New-SeedForgeVerificationContext -ProjectRoot $ProjectRoot @expectedArguments
+    }
+    else {
+        $root = [IO.Path]::GetFullPath($ProjectRoot).TrimEnd([char[]]@('\','/'))
+        $gitRoot = [IO.Path]::GetFullPath((Invoke-SeedForgeContractGit $root @('rev-parse','--show-toplevel'))).TrimEnd([char[]]@('\','/'))
+        if (-not $root.Equals($gitRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'ProjectRoot must be the exact Git worktree root.' }
+        $revision = Invoke-SeedForgeContractGit $root @('rev-parse','--verify','HEAD')
+        $tree = Invoke-SeedForgeContractGit $root @('rev-parse','--verify','HEAD^{tree}')
+        if ($revision -cnotmatch '\A[0-9a-f]{40}\z' -or $tree -cnotmatch '\A[0-9a-f]{40}\z') { throw 'Diagnostic source still requires exact 40-hex Git identities.' }
+        if ($expectedArguments.ContainsKey('ExpectedRevision') -and $revision -cne $expectedArguments.ExpectedRevision.ToLowerInvariant()) {
+            throw "Git HEAD '$revision' differs from expected revision '$($expectedArguments.ExpectedRevision)'."
+        }
+        $context = [pscustomobject]@{ ProjectRoot=$root; ExpectedRevision=$revision; TreeId=$tree; CleanFingerprint=(Get-SeedForgeCleanFingerprint $root $revision $tree) }
+        Write-Host "DIAGNOSTIC ONLY: dirty source permitted; no release certification for $revision."
+    }
+    $context | Add-Member -NotePropertyName IsDiagnostic -NotePropertyValue $diagnostic
+    $context | Add-Member -NotePropertyName SourceRevision -NotePropertyValue $(if($diagnostic){"diagnostic-$($context.ExpectedRevision)"}else{$context.ExpectedRevision})
+    return $context
+}
+
+function Assert-SeedForgeScriptContext {
+    param([Parameter(Mandatory)]$Context)
+    if ($Context.IsDiagnostic) {
+        $frozen = Copy-SeedForgeVerificationIdentity $Context
+        if ($Context.SourceRevision -cne "diagnostic-$($frozen.ExpectedRevision)") { throw 'Diagnostic source identity is malformed.' }
+        $head = Invoke-SeedForgeContractGit $frozen.ProjectRoot @('rev-parse','--verify','HEAD')
+        if ($head -cne $frozen.ExpectedRevision) { throw 'Diagnostic HEAD changed during execution.' }
+    }
+    else {
+        if ($Context.SourceRevision -cne $Context.ExpectedRevision) { throw 'Authoritative script source identity is malformed.' }
+        Assert-SeedForgeVerificationContext -Context $Context
+    }
+}
+
+function Invoke-SeedForgeScriptStep {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Context, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][scriptblock]$Action)
+    Assert-SeedForgeScriptContext -Context $Context
+    if (-not $Context.IsDiagnostic) {
+        return Invoke-SeedForgeVerifiedStep -Context $Context -Name $Name -Action $Action
+    }
+    $frozen = Copy-SeedForgeVerificationIdentity $Context
+    $frozen | Add-Member -NotePropertyName IsDiagnostic -NotePropertyValue $true
+    $frozen | Add-Member -NotePropertyName SourceRevision -NotePropertyValue $Context.SourceRevision
+    $actionError = $null; $afterError = $null; $output = @()
+    try { $output = @(& $Action) }
+    catch { $actionError = $_ }
+    finally {
+        try {
+            Assert-SeedForgeScriptContext -Context $frozen
+            if (-not $Context.IsDiagnostic -or $Context.SourceRevision -cne $frozen.SourceRevision -or $Context.ExpectedRevision -cne $frozen.ExpectedRevision) {
+                throw 'Diagnostic context changed during execution.'
+            }
+        }
+        catch { $afterError = $_ }
+    }
+    if ($null -ne $afterError) {
+        if ($null -ne $actionError) { throw [AggregateException]::new("$Name failed: $($actionError.Exception.Message); $($afterError.Exception.Message)", [Exception[]]@($actionError.Exception,$afterError.Exception)) }
+        $PSCmdlet.ThrowTerminatingError($afterError)
+    }
+    if ($null -ne $actionError) { $PSCmdlet.ThrowTerminatingError($actionError) }
+    return $output
+}
+
+function Get-SeedForgeEvidenceDigest {
+    param([string]$ProjectRoot,[string]$Path)
+    $file = Get-SeedForgeArtifactFile $ProjectRoot $Path 'evidence'
+    $stream = [IO.File]::Open($file.FullName,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $first = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+        $stream.Position = 0
+        $second = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-','').ToLowerInvariant()
+        if ($first -cne $second) { throw 'Evidence bytes changed during independent reread.' }
+        return [pscustomobject]@{ path=$file.FullName; size=$stream.Length; sha256=$second }
+    }
+    finally { $sha.Dispose(); $stream.Dispose() }
+}
+
+function Assert-SeedForgeEvidenceIndex {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Context,[Parameter(Mandatory)][string]$Path)
+    if ($Context.PSObject.Properties['IsDiagnostic'] -and $Context.IsDiagnostic) { throw 'A diagnostic context cannot certify an evidence index.' }
+    Invoke-SeedForgeVerifiedStep -Context $Context -Name 'evidence index independent verification' -Action {
+        $file = Get-SeedForgeArtifactFile $Context.ProjectRoot $Path 'index'
+        $checksum = Get-SeedForgeArtifactFile $Context.ProjectRoot ($file.FullName + '.sha256') 'index checksum'
+        $digest = Get-SeedForgeEvidenceDigest $Context.ProjectRoot $file.FullName
+        $expected = Get-Content -Raw -LiteralPath $checksum.FullName
+        if ($expected.TrimEnd([char[]]@("`r","`n")) -cne "$($digest.sha256)  $($file.Name)") { throw 'Evidence index checksum mismatch.' }
+        $index = Get-Content -Raw -LiteralPath $file.FullName | ConvertFrom-Json
+        if ($index.schema -cne 'seedforge.evidence-index' -or $index.schemaVersion -ne 1 -or $index.sourceRevision -cne $Context.ExpectedRevision -or @($index.files).Count -eq 0) {
+            throw 'Evidence index schema/revision/membership is invalid.'
+        }
+        $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($entry in $index.files) {
+            $actual = Get-SeedForgeEvidenceDigest $Context.ProjectRoot ([string]$entry.path)
+            if (-not $seen.Add($actual.path)) { throw 'Evidence index contains a duplicate path.' }
+            if ($actual.path -ieq $file.FullName -or $actual.path -ieq $checksum.FullName) { throw 'Evidence index cannot contain itself or its checksum.' }
+            if ($entry.sha256 -cne $actual.sha256 -or $entry.size -ne $actual.size) { throw "Evidence payload checksum/size mismatch: $($actual.path)" }
+        }
+        $index | Add-Member -NotePropertyName IndexPath -NotePropertyValue $file.FullName -Force
+        $index | Add-Member -NotePropertyName Sha256 -NotePropertyValue $digest.sha256 -Force
+        return $index
+    }
+}
+
+function Get-SeedForgeEvidenceFields {
+    param($Value)
+    $fields = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)
+    if ($Value -is [Collections.IDictionary]) {
+        foreach ($key in $Value.Keys) {
+            if ($key -isnot [string]) { throw 'Evidence field names must be strings.' }
+            $fields.Add($key,$Value[$key])
+        }
+    }
+    elseif ($Value -is [pscustomobject]) {
+        foreach ($property in $Value.PSObject.Properties) { $fields.Add($property.Name,$property.Value) }
+    }
+    return ,$fields
+}
+
+function ConvertTo-SeedForgeEvidenceSize {
+    param($Value)
+    $numericTypes = @('Byte','SByte','Int16','UInt16','Int32','UInt32','Int64','UInt64','Single','Double','Decimal')
+    if ($null -eq $Value -or [Type]::GetTypeCode($Value.GetType()).ToString() -notin $numericTypes) { throw 'Evidence length/size must be a numeric integer.' }
+    try { [decimal]$number = $Value }
+    catch { throw 'Evidence length/size is invalid.' }
+    if ($number -lt 0 -or $number -gt [long]::MaxValue -or [decimal]::Truncate($number) -ne $number) { throw 'Evidence length/size must be a nonnegative Int64 integer.' }
+    return [long]$number
+}
+
+function New-SeedForgeFrozenEvidenceRecord {
+    param([string]$Path,[long]$Size,[string]$Sha256)
+    $fields = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)
+    $fields.Add('path',$Path); $fields.Add('size',$Size); $fields.Add('sha256',$Sha256)
+    return ,([Collections.ObjectModel.ReadOnlyDictionary[string,object]]::new($fields))
+}
+
+function Copy-SeedForgeExpectedEvidenceRecords {
+    param([string]$ProjectRoot,[object[]]$Records)
+    if ($null -eq $Records -or $Records.Count -eq 0) { throw 'Explicit nonempty ExpectedRecords are required; current bytes cannot define a new verification baseline.' }
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $copies = [Collections.Generic.List[object]]::new()
+    foreach ($record in $Records) {
+        $fields = Get-SeedForgeEvidenceFields $record
+        foreach ($name in @('path','size','sha256')) { if (-not $fields.ContainsKey($name)) { throw "Expected evidence record is missing '$name'." } }
+        if ($fields['path'] -isnot [string] -or $fields['sha256'] -isnot [string] -or $fields['sha256'] -cnotmatch '\A[0-9a-fA-F]{64}\z') { throw 'Expected evidence path or SHA256 is malformed.' }
+        $file = Get-SeedForgeArtifactFile $ProjectRoot $fields['path'] 'expected evidence'
+        if (-not $seen.Add($file.FullName)) { throw "Duplicate/conflicting expected evidence record: '$($file.FullName)'." }
+        $size = ConvertTo-SeedForgeEvidenceSize $fields['size']
+        $copies.Add((New-SeedForgeFrozenEvidenceRecord $file.FullName $size $fields['sha256'].ToLowerInvariant()))
+    }
+    return $copies.ToArray()
+}
+
+function Assert-SeedForgeFrozenEvidenceBytes {
+    param([string]$ProjectRoot,[object[]]$Records)
+    foreach ($record in $Records) {
+        $actual = Get-SeedForgeEvidenceDigest $ProjectRoot $record.path
+        if ($record.sha256 -cne $actual.sha256 -or $record.size -ne $actual.size) { throw "Evidence digest/size changed from its verified expectation: '$($actual.path)'." }
+    }
+}
+
+function Get-SeedForgeEvidenceSnapshot {
+    <# Captures files immediately after a step and validates all digest claims in
+       its returned object graph. Consistent references coalesce; records are
+       read-only copies. It does not recursively deserialize referenced JSON. #>
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Context, [Parameter(Mandatory)][AllowNull()][AllowEmptyCollection()]$Evidence)
+    if ($Context.PSObject.Properties['IsDiagnostic'] -and $Context.IsDiagnostic) { throw 'A diagnostic context cannot create authoritative evidence snapshots.' }
+    Invoke-SeedForgeVerifiedStep -Context $Context -Name 'step evidence digest snapshot' -Action {
+        $records = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)
+        $artifactPrefix = [IO.Path]::GetFullPath((Join-Path $Context.ProjectRoot 'Artifacts')).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+        function Add-SnapshotFile([string]$FilePath,$ClaimedHash,$ClaimedSize,[bool]$HasSize) {
+            $actual = Get-SeedForgeEvidenceDigest $Context.ProjectRoot $FilePath
+            if ($null -ne $ClaimedHash) {
+                if ($ClaimedHash -isnot [string] -or $ClaimedHash -cnotmatch '\A[0-9a-fA-F]{64}\z') { throw 'Child evidence SHA256 is malformed.' }
+                if ($ClaimedHash.ToLowerInvariant() -cne $actual.sha256) { throw "Child evidence digest/hash mismatch: '$($actual.path)'." }
+            }
+            if ($HasSize -and (ConvertTo-SeedForgeEvidenceSize $ClaimedSize) -ne $actual.size) { throw "Child evidence length/size mismatch: '$($actual.path)'." }
+            if ($records.ContainsKey($actual.path)) {
+                if ($records[$actual.path].sha256 -cne $actual.sha256 -or $records[$actual.path].size -ne $actual.size) { throw 'Evidence changed while traversing its graph.' }
+            }
+            else { $records.Add($actual.path,(New-SeedForgeFrozenEvidenceRecord $actual.path $actual.size $actual.sha256)) }
+        }
+        function Visit-SnapshotValue($Value,[string]$FieldName,[int]$Depth) {
+            if ($Depth -gt 64) { throw 'Evidence graph is cyclic or exceeds the supported depth.' }
+            if ($null -eq $Value) { return }
+            if ($Value -is [string]) {
+                if (-not [IO.Path]::IsPathRooted($Value)) { return }
+                $full = [IO.Path]::GetFullPath($Value)
+                if (-not $full.StartsWith($artifactPrefix,[StringComparison]::OrdinalIgnoreCase)) {
+                    # Engine executable and source-root metadata are not output evidence.
+                    if ($FieldName -in @('executable','EngineRoot','ProjectRoot')) { return }
+                    throw "Evidence path escapes Artifacts: '$full'."
+                }
+                $item = Get-SeedForgeArtifactFile $Context.ProjectRoot $full 'graph evidence' -AllowDirectory
+                if ($item -is [IO.FileInfo]) { Add-SnapshotFile $full $null $null $false }
+                return
+            }
+            if ($Value -is [Collections.IDictionary] -or $Value -is [pscustomobject]) {
+                $fields = Get-SeedForgeEvidenceFields $Value
+                $pairs = @(@('Path','Sha256'),@('reportIndex','reportSha256'),@('trace','traceSha256'),@('archive','sha256'),@('ConsoleLog','ConsoleLogSha256'),@('Log','LogSha256'),@('IndexPath','Sha256'))
+                $matchedHashes = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+                foreach ($pair in $pairs) {
+                    if ($fields.ContainsKey($pair[0]) -and $fields.ContainsKey($pair[1])) {
+                        if ($fields[$pair[0]] -isnot [string] -or [string]::IsNullOrWhiteSpace($fields[$pair[0]]) -or $null -eq $fields[$pair[1]]) { throw 'Child evidence digest pair is malformed.' }
+                        $size = $null; $hasSize = $false
+                        if ($pair[0] -ieq 'Path') {
+                            if ($fields.ContainsKey('Length') -and $fields.ContainsKey('size') -and
+                                (ConvertTo-SeedForgeEvidenceSize $fields['Length']) -ne (ConvertTo-SeedForgeEvidenceSize $fields['size'])) {
+                                throw 'Child evidence Length and size claims conflict.'
+                            }
+                            if ($fields.ContainsKey('Length')) { $size=$fields['Length'];$hasSize=$true }
+                            elseif ($fields.ContainsKey('size')) { $size=$fields['size'];$hasSize=$true }
+                        }
+                        Add-SnapshotFile $fields[$pair[0]] $fields[$pair[1]] $size $hasSize
+                        [void]$matchedHashes.Add($pair[1])
+                    }
+                }
+                foreach ($hashName in @('Sha256','reportSha256','traceSha256','ConsoleLogSha256','LogSha256')) {
+                    if ($fields.ContainsKey($hashName) -and -not $matchedHashes.Contains($hashName)) { throw "Child evidence hash '$hashName' has no matching path." }
+                }
+                foreach ($key in $fields.Keys) { Visit-SnapshotValue $fields[$key] $key ($Depth+1) }
+            }
+            elseif ($Value -is [Collections.IEnumerable]) { foreach ($child in $Value) { Visit-SnapshotValue $child $FieldName ($Depth+1) } }
+        }
+        Visit-SnapshotValue $Evidence '' 0
+        return @($records.Values)
+    }
+}
+
+function Assert-SeedForgeEvidenceRecords {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Context, [Parameter(Mandatory)][object[]]$Records)
+    if ($Context.PSObject.Properties['IsDiagnostic'] -and $Context.IsDiagnostic) { throw 'A diagnostic context cannot certify evidence records.' }
+    Invoke-SeedForgeVerifiedStep -Context $Context -Name 'frozen evidence record verification' -Action {
+        $frozen = @(Copy-SeedForgeExpectedEvidenceRecords $Context.ProjectRoot $Records)
+        Assert-SeedForgeFrozenEvidenceBytes $Context.ProjectRoot $frozen
+        return $frozen
+    }
+}
+
+function Write-SeedForgeEvidenceIndex {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)]$Context,[Parameter(Mandatory)][string]$Path,[Parameter(Mandatory)][string[]]$Paths,[object[]]$ExpectedRecords)
+    if ($Context.PSObject.Properties['IsDiagnostic'] -and $Context.IsDiagnostic) { throw 'A diagnostic context cannot certify an evidence index.' }
+    $frozenRecords = @(Copy-SeedForgeExpectedEvidenceRecords $Context.ProjectRoot $ExpectedRecords)
+    Invoke-SeedForgeVerifiedStep -Context $Context -Name 'evidence index creation' -Action {
+        Assert-SeedForgeFrozenEvidenceBytes $Context.ProjectRoot $frozenRecords
+        $full = [IO.Path]::GetFullPath($Path)
+        $root = [IO.Path]::GetFullPath((Join-Path $Context.ProjectRoot 'Artifacts')).TrimEnd('\','/')
+        if (-not $full.StartsWith($root + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { throw 'Evidence index path escapes Artifacts.' }
+        # Require an existing ordinary parent, and check every ancestor before writing.
+        $parent = [IO.Path]::GetDirectoryName($full)
+        while ($parent) {
+            $item = Get-Item -LiteralPath $parent -Force
+            if ($item -isnot [IO.DirectoryInfo] -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Evidence index parent is not an ordinary directory.' }
+            $parent = [IO.Path]::GetDirectoryName($parent)
+        }
+        foreach ($target in @($full,($full + '.sha256'))) {
+            if (Test-Path -LiteralPath $target) { Get-SeedForgeArtifactFile $Context.ProjectRoot $target 'index output' | Out-Null }
+        }
+        $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($source in $Paths) {
+            $file = Get-SeedForgeArtifactFile $Context.ProjectRoot $source 'index payload'
+            if (-not $seen.Add($file.FullName)) { throw 'Evidence index contains a duplicate path.' }
+            if ($file.FullName -ieq $full -or $file.FullName -ieq ($full + '.sha256')) { throw 'Evidence index cannot contain itself or its checksum.' }
+        }
+        if ($seen.Count -ne $frozenRecords.Count) { throw 'Evidence index paths and ExpectedRecords membership differ.' }
+        foreach ($record in $frozenRecords) { if (-not $seen.Contains($record.path)) { throw 'Evidence index paths and ExpectedRecords membership differ.' } }
+        $index = [ordered]@{ schema='seedforge.evidence-index'; schemaVersion=1; sourceRevision=$Context.ExpectedRevision; files=$frozenRecords }
+        Assert-SeedForgeVerificationContext -Context $Context
+        Assert-SeedForgeFrozenEvidenceBytes $Context.ProjectRoot $frozenRecords
+        [IO.File]::WriteAllText($full,($index | ConvertTo-Json -Depth 7))
+        $digest = Get-SeedForgeEvidenceDigest $Context.ProjectRoot $full
+        [IO.File]::WriteAllText(($full + '.sha256'),"$($digest.sha256)  $([IO.Path]::GetFileName($full))`r`n")
+        return Assert-SeedForgeEvidenceIndex -Context $Context -Path $full
     }
 }

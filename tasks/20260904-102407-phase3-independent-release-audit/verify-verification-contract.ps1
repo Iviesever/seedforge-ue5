@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([string]$CaseFilter = '*')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -55,6 +55,7 @@ else {
 }
 
 function Invoke-ContractCase([string]$Name, [scriptblock]$Check) {
+    if ($Name -notlike $CaseFilter) { return }
     $fixture = New-ContractFixture $Name
     try {
         $detail = @(& $Check $fixture) -join [Environment]::NewLine
@@ -306,6 +307,217 @@ foreach ($mode in @('revision', 'hash', 'archive-bytes', 'checksum-hash', 'check
         }
         if ($explicitChecksum) { Assert-ContractRejected { Assert-SeedForgeArtifactManifest -Context $context -ManifestPath $a.ManifestPath -ChecksumPath $explicitChecksum } }
         else { Assert-ContractRejected { Assert-SeedForgeArtifactManifest -Context $context -ManifestPath $a.ManifestPath } }
+    }
+}
+
+Invoke-ContractCase 'script context clean default binds authoritative revision' {
+    param($f)
+    $context = New-SeedForgeScriptContext -ProjectRoot $f.Root -Parameters @{}
+    if ($context.IsDiagnostic -or $context.SourceRevision -cne $f.Revision) { throw 'Default script context is not authoritative clean source.' }
+    $result = Invoke-SeedForgeScriptStep -Context $context -Name 'clean step' -Action { 'ACTUAL_RESULT' }
+    if ($result -cne 'ACTUAL_RESULT') { throw 'Script step lost action result.' }
+}
+Invoke-ContractCase 'script context diagnostic is explicit and cannot certify archives' {
+    param($f)
+    $clean = New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $artifact = New-ArtifactFixture $f $clean
+    $context = New-SeedForgeScriptContext -ProjectRoot $f.Root -Parameters @{ AllowDirtyDiagnostic=$true }
+    if (-not $context.IsDiagnostic -or $context.SourceRevision -cne "diagnostic-$($f.Revision)") { throw 'Diagnostic identity is not explicit.' }
+    Assert-ContractRejected { Assert-SeedForgeArtifactManifest -Context $context -ManifestPath $artifact.ManifestPath } @('diagnostic')
+}
+Invoke-ContractCase 'script context dirty default fails while explicit diagnostic executes' {
+    param($f)
+    [IO.File]::AppendAllText((Join-Path $f.Root 'sentinel.txt'),'SYNTHETIC DIRTY')
+    Assert-ContractRejected { New-SeedForgeScriptContext -ProjectRoot $f.Root -Parameters @{} } @('not clean')
+    $context = New-SeedForgeScriptContext -ProjectRoot $f.Root -Parameters @{ AllowDirtyDiagnostic=$true; ExpectedRevision=$f.Revision }
+    if (-not $context.IsDiagnostic) { throw 'Dirty context is not diagnostic.' }
+    if ((Invoke-SeedForgeScriptStep -Context $context -Name 'diagnostic' -Action { 42 }) -ne 42) { throw 'Diagnostic action did not execute.' }
+}
+Invoke-ContractCase 'script context diagnostic still rejects invalid expected revision' {
+    param($f)
+    Assert-ContractRejected { New-SeedForgeScriptContext -ProjectRoot $f.Root -Parameters @{ AllowDirtyDiagnostic=$true; ExpectedRevision='abc' } } @('40-hex')
+}
+Invoke-ContractCase 'script context step detects real source change' {
+    param($f)
+    $context = New-SeedForgeScriptContext -ProjectRoot $f.Root -Parameters @{}
+    Assert-ContractRejected { Invoke-SeedForgeScriptStep -Context $context -Name 'actual child' -Action { Invoke-FixtureChild $f 'source' } } @('not clean')
+}
+Invoke-ContractCase 'script context diagnostic step still rejects HEAD movement' {
+    param($f)
+    $context = New-SeedForgeScriptContext -ProjectRoot $f.Root -Parameters @{ AllowDirtyDiagnostic=$true }
+    Assert-ContractRejected { Invoke-SeedForgeScriptStep -Context $context -Name 'diagnostic child' -Action { Invoke-FixtureChild $f 'head' } } @('HEAD changed')
+}
+
+Invoke-ContractCase 'evidence index rehashes each owned file and itself' {
+    param($f)
+    $context = New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file = Join-Path $f.Artifacts 'evidence.txt'; [IO.File]::WriteAllText($file,'SYNTHETIC EVIDENCE')
+    $path = Join-Path $f.Artifacts 'index.json'
+    $expected = @(Get-SeedForgeEvidenceDigest $f.Root $file)
+    $written = Write-SeedForgeEvidenceIndex -Context $context -Path $path -Paths @($file) -ExpectedRecords $expected
+    $checked = Assert-SeedForgeEvidenceIndex -Context $context -Path $path
+    if ($checked.files.Count -ne 1 -or $checked.files[0].sha256 -cne (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()) { throw 'Evidence bytes were not independently hashed.' }
+    if (-not (Test-Path -LiteralPath "$path.sha256")) { throw 'Index checksum missing.' }
+}
+foreach ($mode in @('changed-payload','changed-index','missing-payload','duplicate-path','escaped-path')) {
+    Invoke-ContractCase "evidence index rejects $mode" {
+        param($f)
+        $context = New-SeedForgeVerificationContext -ProjectRoot $f.Root
+        $file = Join-Path $f.Artifacts 'evidence.txt'; [IO.File]::WriteAllText($file,'SYNTHETIC EVIDENCE')
+        $path = Join-Path $f.Artifacts 'index.json'
+        $expected = @(Get-SeedForgeEvidenceDigest $f.Root $file)
+        Write-SeedForgeEvidenceIndex -Context $context -Path $path -Paths @($file) -ExpectedRecords $expected | Out-Null
+        switch ($mode) {
+            'changed-payload' { [IO.File]::AppendAllText($file,'changed') }
+            'changed-index' { [IO.File]::AppendAllText($path,' ') }
+            'missing-payload' { Move-Item -LiteralPath $file -Destination (Join-Path $f.Artifacts 'held.txt') }
+            'duplicate-path' { Assert-ContractRejected { Write-SeedForgeEvidenceIndex -Context $context -Path $path -Paths @($file,$file) -ExpectedRecords $expected } @('duplicate'); return }
+            'escaped-path' { Assert-ContractRejected { Write-SeedForgeEvidenceIndex -Context $context -Path $path -Paths @((Join-Path $f.Root 'sentinel.txt')) -ExpectedRecords $expected } @('escapes'); return }
+        }
+        Assert-ContractRejected { Assert-SeedForgeEvidenceIndex -Context $context -Path $path }
+    }
+}
+
+Invoke-ContractCase 'snapshot validates all supplied child digest pairs and nested package logs' {
+    param($f)
+    $context = New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $pairs = @(@('Path','Sha256'),@('reportIndex','reportSha256'),@('trace','traceSha256'),@('archive','sha256'),@('ConsoleLog','ConsoleLogSha256'),@('Log','LogSha256'))
+    $children = @()
+    for($i=0;$i -lt $pairs.Count;++$i){
+        $file=Join-Path $f.Artifacts "child-$i.txt"; [IO.File]::WriteAllText($file,"SYNTHETIC child $i")
+        $digest=Get-SeedForgeEvidenceDigest $f.Root $file
+        $child=[ordered]@{}; $child[$pairs[$i][0]]=$file; $child[$pairs[$i][1]]=$digest.sha256
+        if($i -eq 0){$child.Length=$digest.size}
+        $children += [pscustomobject]$child
+    }
+    $snapshot=@(Get-SeedForgeEvidenceSnapshot -Context $context -Evidence @{ gameplay=@{package=@{buildLogProof=$children}} })
+    if($snapshot.Count -ne 6){throw 'Snapshot omitted nested child evidence.'}
+    Assert-SeedForgeEvidenceRecords -Context $context -Records $snapshot
+}
+Invoke-ContractCase 'snapshot accepts a no-output audit step without inventing evidence' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    if(@(Get-SeedForgeEvidenceSnapshot -Context $context -Evidence $null).Count -ne 0){throw 'No-output step invented a record.'}
+}
+foreach($pair in @(@('Path','Sha256'),@('reportIndex','reportSha256'),@('trace','traceSha256'),@('archive','sha256'),@('ConsoleLog','ConsoleLogSha256'),@('Log','LogSha256'))){
+    Invoke-ContractCase "snapshot rejects false child digest $($pair[1])" {
+        param($f)
+        $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+        $file=Join-Path $f.Artifacts 'child.txt';[IO.File]::WriteAllText($file,'SYNTHETIC child')
+        $child=[ordered]@{};$child[$pair[0]]=$file;$child[$pair[1]]='0'*64
+        Assert-ContractRejected { Get-SeedForgeEvidenceSnapshot -Context $context -Evidence $child } @('digest|hash|SHA')
+    }
+}
+Invoke-ContractCase 'snapshot rejects child length mismatch' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file=Join-Path $f.Artifacts 'child.txt';[IO.File]::WriteAllText($file,'SYNTHETIC child')
+    $digest=Get-SeedForgeEvidenceDigest $f.Root $file
+    Assert-ContractRejected { Get-SeedForgeEvidenceSnapshot -Context $context -Evidence @{Path=$file;Sha256=$digest.sha256;Length=1} } @('size|length')
+}
+Invoke-ContractCase 'snapshot rejects conflicting Length and size aliases' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file=Join-Path $f.Artifacts 'child.txt';[IO.File]::WriteAllText($file,'SYNTHETIC child')
+    $digest=Get-SeedForgeEvidenceDigest $f.Root $file
+    Assert-ContractRejected { Get-SeedForgeEvidenceSnapshot -Context $context -Evidence @{Path=$file;Sha256=$digest.sha256;Length=$digest.size;size=1} } @('size|length')
+}
+Invoke-ContractCase 'snapshot rejects fractional expected size instead of coercing it' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file=Join-Path $f.Artifacts 'child.txt';[IO.File]::WriteAllText($file,'SYNTHETIC child')
+    $digest=Get-SeedForgeEvidenceDigest $f.Root $file
+    Assert-ContractRejected { Assert-SeedForgeEvidenceRecords -Context $context -Records @(@{path=$file;sha256=$digest.sha256;size=1.5}) } @('size|integer')
+}
+Invoke-ContractCase 'snapshot includes index self hash and keeps non-evidence executable metadata separate' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file=Join-Path $f.Artifacts 'index-fixture.txt';[IO.File]::WriteAllText($file,'SYNTHETIC index')
+    $digest=Get-SeedForgeEvidenceDigest $f.Root $file
+    $snapshot=@(Get-SeedForgeEvidenceSnapshot -Context $context -Evidence @{IndexPath=$file;Sha256=$digest.sha256;executable='C:\readonly-engine\UnrealEditor.exe';ProjectRoot=$f.Root})
+    if($snapshot.Count -ne 1 -or $snapshot[0].sha256 -cne $digest.sha256){throw 'Index self hash was omitted.'}
+    Assert-ContractRejected { Get-SeedForgeEvidenceSnapshot -Context $context -Evidence @{IndexPath=$file;Sha256='0'*64} } @('hash|digest')
+}
+Invoke-ContractCase 'omitted ExpectedRecords fails before any index is created' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file=Join-Path $f.Artifacts 'child.txt';[IO.File]::WriteAllText($file,'SYNTHETIC child')
+    $path=Join-Path $f.Artifacts 'must-not-create.json'
+    Assert-ContractRejected { Write-SeedForgeEvidenceIndex -Context $context -Path $path -Paths @($file) } @('ExpectedRecords')
+    if(Test-Path -LiteralPath $path){throw 'Unbound index was created.'}
+}
+Invoke-ContractCase 'snapshot records cannot mutate or follow mutable child objects' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file=Join-Path $f.Artifacts 'child.txt';[IO.File]::WriteAllText($file,'SYNTHETIC child')
+    $digest=Get-SeedForgeEvidenceDigest $f.Root $file
+    $child=[pscustomobject]@{Path=$file;Sha256=$digest.sha256;Length=$digest.size}
+    $snapshot=@(Get-SeedForgeEvidenceSnapshot -Context $context -Evidence @($child,$file,$child))
+    if($snapshot.Count -ne 1){throw 'Snapshot did not coalesce consistent graph references.'}
+    $child.Sha256='0'*64
+    if($snapshot[0].sha256 -cne $digest.sha256){throw 'Snapshot retained a mutable child alias.'}
+    $blocked=$false;try{$snapshot[0].sha256='1'*64}catch{$blocked=$true}
+    if(-not $blocked){throw 'Snapshot record was mutable.'}
+}
+Invoke-ContractCase 'tamper between successful step digest and index seal is rejected' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file=Join-Path $f.Artifacts 'passed-log.txt';[IO.File]::WriteAllText($file,'SYNTHETIC passed log')
+    $expected=@(Get-SeedForgeEvidenceDigest $f.Root $file)
+    [IO.File]::AppendAllText($file,"`nLogFoo: Error: changed after passed step")
+    $path=Join-Path $f.Artifacts 'must-not-seal.json'
+    Assert-ContractRejected { Write-SeedForgeEvidenceIndex -Context $context -Path $path -Paths @($file) -ExpectedRecords $expected } @('digest|hash|size|changed')
+    if(Test-Path -LiteralPath $path){throw 'Tampered payload was published before rejection.'}
+}
+Invoke-ContractCase 'tamper after machine-index check cannot be rebased into final index' {
+    param($f)
+    $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+    $file=Join-Path $f.Artifacts 'passed-report.txt';[IO.File]::WriteAllText($file,'SYNTHETIC passed report')
+    $machinePath=Join-Path $f.Artifacts 'machine-index.json'
+    $initial=@(Get-SeedForgeEvidenceDigest $f.Root $file)
+    Write-SeedForgeEvidenceIndex -Context $context -Path $machinePath -Paths @($file) -ExpectedRecords $initial | Out-Null
+    $machine=Assert-SeedForgeEvidenceIndex -Context $context -Path $machinePath
+    $frozen=@($machine.files)+@(Get-SeedForgeEvidenceDigest $f.Root $machinePath)+@(Get-SeedForgeEvidenceDigest $f.Root "$machinePath.sha256")
+    [IO.File]::AppendAllText($file,'CHANGED AFTER MACHINE CHECK')
+    $finalPath=Join-Path $f.Artifacts 'must-not-finalize.json'
+    Assert-ContractRejected { Write-SeedForgeEvidenceIndex -Context $context -Path $finalPath -Paths @($frozen | ForEach-Object path) -ExpectedRecords $frozen } @('digest|hash|size|changed')
+    if(Test-Path -LiteralPath $finalPath){throw 'Final seal silently rebased a changed machine payload.'}
+}
+foreach($mode in @('missing-expectations','duplicate-expectations','conflicting-expectations','missing-expected-path','extra-expected-path','missing-file','false-hash')){
+    Invoke-ContractCase "index frozen expectations reject $mode" {
+        param($f)
+        $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+        $file=Join-Path $f.Artifacts 'one.txt';[IO.File]::WriteAllText($file,'SYNTHETIC one')
+        $other=Join-Path $f.Artifacts 'two.txt';[IO.File]::WriteAllText($other,'SYNTHETIC two')
+        $expected=@(Get-SeedForgeEvidenceDigest $f.Root $file);$paths=@($file)
+        switch($mode){
+            'missing-expectations' {$expected=@()}
+            'duplicate-expectations' {$expected=@($expected[0],$expected[0])}
+            'conflicting-expectations' {$expected += [pscustomobject]@{path=$file;size=1;sha256='0'*64}}
+            'missing-expected-path' {$paths += $other}
+            'extra-expected-path' {$expected += Get-SeedForgeEvidenceDigest $f.Root $other}
+            'missing-file' {Move-Item -LiteralPath $file -Destination (Join-Path $f.Artifacts 'held.txt')}
+            'false-hash' {$expected[0].sha256='0'*64}
+        }
+        Assert-ContractRejected { Write-SeedForgeEvidenceIndex -Context $context -Path (Join-Path $f.Artifacts 'index.json') -Paths $paths -ExpectedRecords $expected }
+    }
+}
+foreach($mode in @('outside','reparse','missing','missing-hash-path','cyclic','false-paired-claim')){
+    Invoke-ContractCase "snapshot graph rejects $mode" {
+        param($f)
+        $context=New-SeedForgeVerificationContext -ProjectRoot $f.Root
+        $file=Join-Path $f.Artifacts 'one.txt';[IO.File]::WriteAllText($file,'SYNTHETIC one')
+        $digest=Get-SeedForgeEvidenceDigest $f.Root $file
+        $value=@{Path=$file;Sha256=$digest.sha256}
+        switch($mode){
+            'outside' {$value.Path=Join-Path $f.Root 'sentinel.txt'}
+            'reparse' {$dir=Join-Path $f.Artifacts 'linked';New-Item -ItemType Junction -Path $dir -Target $f.Artifacts|Out-Null;$value.Path=Join-Path $dir 'one.txt'}
+            'missing' {$value.Path=Join-Path $f.Artifacts 'missing.txt'}
+            'missing-hash-path' {$value=@{reportSha256=$digest.sha256}}
+            'cyclic' {$value.self=$value}
+            'false-paired-claim' {$value=@(@{Path=$file;Sha256=$digest.sha256},@{Path=$file;Sha256='0'*64})}
+        }
+        Assert-ContractRejected { Get-SeedForgeEvidenceSnapshot -Context $context -Evidence $value }
     }
 }
 

@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <SeedForgeRepositoryRoot>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\'))</SeedForgeRepositoryRoot>
+    <EngineRoot Condition="'$(EngineRoot)' == ''">$(SEEDFORGE_ENGINE_ROOT)</EngineRoot>
+    <BaseIntermediateOutputPath>$(SeedForgeRepositoryRoot).cache\AutomationExtension\obj\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+    <OutputPath>$(SeedForgeRepositoryRoot)Artifacts\Automation\$(MSBuildProjectName)\</OutputPath>
+    <RestorePackagesPath>$(SeedForgeRepositoryRoot).cache\AutomationExtension\nuget\packages\</RestorePackagesPath>
+    <RestoreConfigFile>$(MSBuildThisFileDirectory)NuGet.Config</RestoreConfigFile>
+    <UseSharedCompilation>false</UseSharedCompilation>
+  </PropertyGroup>
+</Project>

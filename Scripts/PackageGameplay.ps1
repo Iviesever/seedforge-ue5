@@ -2,77 +2,58 @@
 param(
     [string]$EngineRoot = 'D:\program\UnrealEngine\Epic Games\UE_5.8',
     [UInt64]$Seed = 24301,
-    [int]$TimeoutSeconds = 300
+    [int]$TimeoutSeconds = 300,
+    [string]$ExpectedRevision
 )
-
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$packageManifestPath = Join-Path $projectRoot 'Artifacts\Package\last-package.json'
-$gameplayManifestPath = Join-Path $projectRoot 'Artifacts\Package\last-gameplay-package.json'
-$gameplayReportRoot = Join-Path $projectRoot 'Artifacts\Reports\Gameplay'
+. (Join-Path $PSScriptRoot 'VerificationContract.ps1')
+$verificationContext = New-SeedForgeScriptContext -ProjectRoot $projectRoot -Parameters $PSBoundParameters
+$revision = $verificationContext.ExpectedRevision
 
-& (Join-Path $PSScriptRoot 'PackageDemo.ps1') `
-    -EngineRoot $EngineRoot `
-    -SmokeSeed $Seed `
-    -SmokeTimeoutSeconds $TimeoutSeconds
+$package = Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Win64 build and ordinary capture' -Action {
+    & (Join-Path $PSScriptRoot 'PackageDemo.ps1') -EngineRoot $EngineRoot -SmokeSeed $Seed -SmokeTimeoutSeconds $TimeoutSeconds -ExpectedRevision $revision
+}
+$package = Assert-SeedForgeArtifactManifest -Context $verificationContext -ManifestPath $package.ManifestPath
+if (-not (Test-Path -LiteralPath $package.executable -PathType Leaf)) { throw 'Fresh package has no executable.' }
 
-if (-not (Test-Path -LiteralPath $packageManifestPath)) {
-    throw "PackageDemo produced no manifest at '$packageManifestPath'."
+# Mandatory ordinary input evidence: no gameplay-smoke state driver in this process.
+$inputResult = Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Ordinary packaged input and restart self-test' -Action {
+    & (Join-Path $PSScriptRoot 'TestInputSelfTest.ps1') -EngineRoot $EngineRoot -Seed $Seed -Executable $package.executable -RunLabel packaged -ExpectedRevision $revision
 }
-$package = Get-Content -Raw -LiteralPath $packageManifestPath | ConvertFrom-Json
-$revision = (git -C $projectRoot rev-parse HEAD).Trim()
-if ($package.sourceRevision -ne $revision) {
-    throw "Package manifest revision '$($package.sourceRevision)' does not match '$revision'."
+$smoke = Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Packaged gameplay smoke and captures' -Action {
+    & (Join-Path $PSScriptRoot 'TestGameplay.ps1') -EngineRoot $EngineRoot -Seed $Seed -TimeoutSeconds $TimeoutSeconds -Executable $package.executable -RunLabel packaged -ExpectedRevision $revision
 }
-if (-not (Test-Path -LiteralPath $package.executable)) {
-    throw "Package manifest executable is missing: '$($package.executable)'."
+foreach ($result in @($inputResult,$smoke)) {
+    if ($result.result -cne 'Passed' -or $result.sourceRevision -cne $revision -or $result.runLabel -cne 'packaged') {
+        throw 'Packaged runtime summary does not prove the exact clean source revision.'
+    }
 }
-
-$smokeStarted = Get-Date
-& (Join-Path $PSScriptRoot 'TestGameplay.ps1') `
-    -EngineRoot $EngineRoot `
-    -Seed $Seed `
-    -TimeoutSeconds $TimeoutSeconds `
-    -Executable $package.executable `
-    -RunLabel packaged
-
-$gameplaySummary = Get-ChildItem -File -Recurse -LiteralPath $gameplayReportRoot -Filter 'summary.json' |
-    Where-Object { $_.LastWriteTime -ge $smokeStarted } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-if (-not $gameplaySummary) {
-    throw 'Packaged gameplay smoke produced no fresh summary.'
-}
-$smoke = Get-Content -Raw -LiteralPath $gameplaySummary.FullName | ConvertFrom-Json
-if ($smoke.runLabel -ne 'packaged' -or $smoke.result -ne 'Passed' -or $smoke.sourceRevision -ne $revision) {
-    throw 'Fresh gameplay summary does not prove the packaged executable at the current revision.'
-}
-
+$negative = @(foreach ($case in @('Grid','Encounter','CapturePath','RenderUnavailable')) {
+    Invoke-SeedForgeScriptStep -Context $verificationContext -Name "Packaged failure $case" -Action {
+        & (Join-Path $PSScriptRoot 'TestRunFailure.ps1') -EngineRoot $EngineRoot -Executable $package.executable -Case $case -ExpectedRevision $revision
+    }
+})
+Assert-SeedForgeScriptContext -Context $verificationContext
+$package = Assert-SeedForgeArtifactManifest -Context $verificationContext -ManifestPath $package.ManifestPath
+$timestamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N')
+$manifestPath = Join-Path $projectRoot "Artifacts/Package/gameplay-package-$timestamp.json"
 $manifest = [ordered]@{
-    completedAt = (Get-Date).ToString('o')
-    sourceRevision = $revision
-    version = $package.version
-    seed = $smoke.seed
-    layoutHash = $smoke.layoutHash
-    encounterHash = $smoke.encounterHash
-    result = 'Passed'
-    ordinaryLaunchLog = $package.smokeLog
-    ordinaryLaunchCapture = $package.smokeCapture
-    executable = $package.executable
-    packageDirectory = $package.packageDirectory
-    archive = $package.archive
-    archiveSha256 = $package.sha256
-    gameplayTrace = $smoke.trace
-    gameplaySummary = $gameplaySummary.FullName
-    gameplayScreenshots = $smoke.screenshots
-    gameplayLog = $smoke.log
+    completedAt=[DateTimeOffset]::UtcNow.ToString('o'); sourceRevision=$revision; version=$package.version; result='Passed'
+    seed=$smoke.seed; layoutHash=$smoke.layoutHash; encounterHash=$smoke.encounterHash
+    ordinaryLaunchLog=$package.smokeLog; ordinaryLaunchCapture=$package.smokeCapture
+    executable=$package.executable; packageDirectory=$package.packageDirectory
+    archive=$package.archive; sha256=$package.sha256; packageManifest=$package.ManifestPath
+    packageProof=$package
+    gameplayTrace=$smoke.trace; gameplaySummary=$smoke.summaryPath; gameplayScreenshots=$smoke.screenshots; gameplayLog=$smoke.log
+    inputSummary=$inputResult.summaryPath; inputTrace=$inputResult.trace; inputLog=$inputResult.log
+    negativeRuns=$negative
 }
-[IO.File]::WriteAllText($gameplayManifestPath, ($manifest | ConvertTo-Json -Depth 6) + "`r`n")
-
-Write-Host 'SeedForge Win64 package, ordinary launch, and packaged gameplay smoke passed.'
-Write-Host "Manifest: $gameplayManifestPath"
-Write-Host "Executable: $($package.executable)"
-Write-Host "Trace: $($smoke.trace)"
-Write-Host "Screenshots: $($smoke.screenshots -join ', ')"
+[IO.File]::WriteAllText($manifestPath,($manifest | ConvertTo-Json -Depth 9))
+$verifiedManifest = Assert-SeedForgeArtifactManifest -Context $verificationContext -ManifestPath $manifestPath
+Assert-SeedForgeScriptContext -Context $verificationContext
+Copy-Item -LiteralPath $manifestPath -Destination (Join-Path $projectRoot 'Artifacts/Package/last-gameplay-package.json')
+Assert-SeedForgeScriptContext -Context $verificationContext
+Write-Host "Win64 build, ordinary input/restarts, positive/negative gameplay and captures passed: $manifestPath"
+return $verifiedManifest

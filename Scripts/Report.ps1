@@ -8,19 +8,22 @@ param(
     [int]$SeedCount = 10000,
     [ValidateRange(0, 1000000)]
     [int]$Warmup = 100,
-    [int]$TimeoutSeconds = 900
+    [int]$TimeoutSeconds = 900,
+    [string]$ExpectedRevision
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'VerificationContract.ps1')
+$verificationContext = New-SeedForgeScriptContext -ProjectRoot $projectRoot -Parameters $PSBoundParameters
 $projectFile = Join-Path $projectRoot 'SeedForge.uproject'
 $editor = Join-Path $EngineRoot 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 $reportRoot = Join-Path $projectRoot 'Artifacts\Reports\Phase2'
 $cacheRoot = Join-Path $projectRoot '.cache\DerivedDataCache'
 $userRoot = Join-Path $projectRoot '.user'
-$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$timestamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N')
 $runRoot = Join-Path $reportRoot $timestamp
 $logRoot = Join-Path $runRoot 'logs'
 
@@ -52,19 +55,24 @@ function Invoke-SeedForgeReport {
         '-nosplash',
         '-nullrhi',
         '-nosound',
+        '-culture=en',
         '-UTF8Output',
         "-userdir=$userRoot",
         "-abslog=$logPath"
     ) + $CommandArguments
 
-    $process = Start-Process -FilePath $editor -ArgumentList $arguments -PassThru -WindowStyle Hidden
-    if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-        $process.Kill($true)
-        throw "SeedForge report command '$Name' timed out after $TimeoutSeconds seconds. See '$logPath'."
+    Invoke-SeedForgeScriptStep -Context $verificationContext -Name "Phase2 $Name process" -Action {
+        $process = Start-Process -FilePath $editor -ArgumentList $arguments -PassThru -WindowStyle Hidden
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $process.Kill($true)
+            throw "SeedForge report command '$Name' timed out after $TimeoutSeconds seconds. See '$logPath'."
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "SeedForge report command '$Name' failed with exit code $($process.ExitCode). See '$logPath'."
+        }
     }
-    if ($process.ExitCode -ne 0) {
-        throw "SeedForge report command '$Name' failed with exit code $($process.ExitCode). See '$logPath'."
-    }
+    . (Join-Path $PSScriptRoot 'LogValidation.ps1')
+    Assert-SeedForgeLog -Path $logPath -AllowedWarnings UE58LocalEnvironment | Out-Null
     return $logPath
 }
 
@@ -135,10 +143,8 @@ if ([double]$benchmark.timingsMilliseconds.min -gt [double]$benchmark.timingsMil
 }
 
 $summaryPath = Join-Path $runRoot 'report-summary.json'
-$sourceRevision = (git -C $projectRoot rev-parse HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceRevision)) {
-    throw 'Could not resolve the source revision for the Phase 2 report.'
-}
+$sourceRevision = $verificationContext.ExpectedRevision
+Assert-SeedForgeScriptContext -Context $verificationContext
 $summary = [ordered]@{
     schema = 'seedforge.phase2-report-run'
     schemaVersion = 1
@@ -152,7 +158,12 @@ $summary = [ordered]@{
     benchmarkSamples = $SeedCount
     benchmarkFailures = 0
     benchmarkAggregateHash = [string]$benchmark.aggregateHash
+    summaryPath = $summaryPath
+    result = 'Passed'
+    fileHashes = @(@($leftPath,$rightPath,$diffPath,$benchmarkPath) + @($logs.Values) | ForEach-Object { [pscustomobject]@{ path=$_; sha256=(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() } })
 }
-$summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $summaryPath -Encoding utf8NoBOM
+[IO.File]::WriteAllText($summaryPath,($summary | ConvertTo-Json -Depth 5) + [Environment]::NewLine)
+Assert-SeedForgeScriptContext -Context $verificationContext
 
 Write-Host "Phase 2 report integration passed. Run: $runRoot Summary: $summaryPath"
+return [pscustomobject]$summary

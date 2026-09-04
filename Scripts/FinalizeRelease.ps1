@@ -1,173 +1,83 @@
 [CmdletBinding()]
-param()
-
+param(
+    [string]$ExpectedRevision,
+    [string]$VisualReviewPath,
+    [string]$RemoteReviewPath
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$artifactRoot = Join-Path $projectRoot 'Artifacts'
-$releaseRoot = Join-Path $artifactRoot 'Release'
-$finalRoot = Join-Path $artifactRoot 'Final'
-$verificationPath = Join-Path $artifactRoot 'Reports\verification-last.json'
-$packageManifestPath = Join-Path $artifactRoot 'Package\last-package.json'
-$pluginManifestPath = Join-Path $artifactRoot 'Plugin\last-plugin-package.json'
-$pluginDescriptorPath = Join-Path $projectRoot 'Plugins\SeedForge\SeedForge.uplugin'
-
+. (Join-Path $PSScriptRoot 'VerificationContract.ps1')
+$verificationContext = New-SeedForgeScriptContext -ProjectRoot $projectRoot -Parameters $PSBoundParameters
+$revision = $verificationContext.ExpectedRevision
 & (Join-Path $PSScriptRoot 'AuditRepository.ps1') -RequireClean
+$pointerPath = Join-Path $projectRoot 'Artifacts/Reports/phase3-verification-last.json'
+$pointer = Get-Content -Raw -LiteralPath $pointerPath | ConvertFrom-Json
+$summaryFile = Get-SeedForgeArtifactFile $projectRoot $pointer.summaryPath 'machine summary'
+$machine = Get-Content -Raw -LiteralPath $summaryFile.FullName | ConvertFrom-Json
+if ($machine.schema -cne 'seedforge.phase3-verification' -or $machine.result -cne 'MachinePassed' -or $machine.sourceRevision -cne $revision -or $machine.version -cne '0.3.0') {
+    throw 'Machine verification does not prove the exact 0.3.0 candidate.'
+}
+$machineIndexPath = Join-Path $summaryFile.DirectoryName 'evidence-index.json'
+$machineIndex = Assert-SeedForgeEvidenceIndex -Context $verificationContext -Path $machineIndexPath
+$machineFrozen = @(Get-SeedForgeEvidenceSnapshot -Context $verificationContext -Evidence @($machineIndex,($machineIndexPath+'.sha256')))
+if (@($machineIndex.files | Where-Object { $_.path -ieq $summaryFile.FullName }).Count -ne 1) { throw 'Machine summary is absent from its independent evidence index.' }
+Assert-SeedForgeArtifactManifest -Context $verificationContext -ManifestPath $machine.plugin.ManifestPath | Out-Null
+Assert-SeedForgeArtifactManifest -Context $verificationContext -ManifestPath $machine.gameplay.ManifestPath | Out-Null
 
-foreach ($required in @($verificationPath, $packageManifestPath, $pluginManifestPath, $pluginDescriptorPath)) {
-    if (-not (Test-Path -LiteralPath $required)) {
-        throw "Required finalization input is missing: '$required'."
+# These records are created only after actual original-resolution visual review
+# and a fresh remote fetch/API review by the primary agent, never by this script.
+if ([string]::IsNullOrWhiteSpace($VisualReviewPath) -or [string]::IsNullOrWhiteSpace($RemoteReviewPath)) {
+    throw 'Finalization requires explicit visual and remote review records; machine gates alone are insufficient.'
+}
+$visualFile = Get-SeedForgeArtifactFile $projectRoot $VisualReviewPath 'visual review'
+$remoteFile = Get-SeedForgeArtifactFile $projectRoot $RemoteReviewPath 'remote review'
+$reviewFrozen = @(Get-SeedForgeEvidenceSnapshot -Context $verificationContext -Evidence @($visualFile.FullName,$remoteFile.FullName))
+$visual = Get-Content -Raw -LiteralPath $visualFile.FullName | ConvertFrom-Json
+$remote = Get-Content -Raw -LiteralPath $remoteFile.FullName | ConvertFrom-Json
+Assert-SeedForgeEvidenceRecords -Context $verificationContext -Records $reviewFrozen | Out-Null
+foreach ($review in @($visual,$remote)) {
+    if ($review.sourceRevision -cne $revision -or $review.result -cne 'Passed' -or $review.verificationSummary -ine $summaryFile.FullName) {
+        throw 'Review record does not identify this exact candidate and machine run.'
     }
 }
-
-$revision = (git -C $projectRoot rev-parse HEAD).Trim()
-$shortRevision = (git -C $projectRoot rev-parse --short=10 HEAD).Trim()
-$version = (Get-Content -Raw -LiteralPath $pluginDescriptorPath | ConvertFrom-Json).VersionName
-$verification = Get-Content -Raw -LiteralPath $verificationPath | ConvertFrom-Json
-$packageManifest = Get-Content -Raw -LiteralPath $packageManifestPath | ConvertFrom-Json
-$pluginManifest = Get-Content -Raw -LiteralPath $pluginManifestPath | ConvertFrom-Json
-
-if ($verification.result -ne 'Passed' -or
-    $verification.sourceRevision -ne $revision -or
-    $verification.version -ne $version) {
-    throw "Verification summary does not prove version $version at revision $revision."
+if ($visual.schema -cne 'seedforge.visual-review' -or $remote.schema -cne 'seedforge.remote-review' -or $remote.prNumber -ne 1 -or $remote.headRevision -cne $revision -or $remote.behind -ne 0) {
+    throw 'Visual/remote review schema, PR, head or base freshness contract failed.'
 }
-if ($packageManifest.sourceRevision -ne $revision -or $packageManifest.version -ne $version) {
-    throw "Win64 package manifest does not prove version $version at revision $revision."
-}
-if ($pluginManifest.sourceRevision -ne $revision -or $pluginManifest.version -ne $version) {
-    throw "Plugin package manifest does not prove version $version at revision $revision."
-}
-
-$phase2SummaryPath = [string]$verification.phase2ReportSummary
-if (-not (Test-Path -LiteralPath $phase2SummaryPath)) {
-    throw "Phase 2 report summary is missing: '$phase2SummaryPath'."
-}
-$phase2Summary = Get-Content -Raw -LiteralPath $phase2SummaryPath | ConvertFrom-Json
-if ($phase2Summary.sourceRevision -ne $revision) {
-    throw "Phase 2 report summary does not prove revision $revision."
-}
-
-function Resolve-ArtifactChild {
-    param(
-        [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$Root,
-        [Parameter(Mandatory)][string]$Label
-    )
-
-    $fullPath = [System.IO.Path]::GetFullPath($Path)
-    $rootPrefix = [System.IO.Path]::GetFullPath($Root).TrimEnd('\') + '\'
-    if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "$Label escapes its required artifact root: '$fullPath'."
+$requiredImages = @(@($machine.editorGameplay.screenshots) + @($machine.gameplay.gameplayScreenshots) | ForEach-Object { [IO.Path]::GetFullPath($_) })
+if ($requiredImages.Count -ne 6 -or @($visual.images).Count -ne 6) { throw 'Exactly six Editor/packaged gameplay image reviews are required.' }
+$seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+foreach ($entry in $visual.images) {
+    $digest = Get-SeedForgeEvidenceDigest $projectRoot $entry.path
+    if (-not $seen.Add($digest.path) -or $requiredImages -inotcontains $digest.path) {
+        throw 'Visual review contains a duplicate or unexpected screenshot.'
     }
-    if (-not (Test-Path -LiteralPath $fullPath)) {
-        throw "$Label is missing: '$fullPath'."
-    }
-    return $fullPath
-}
-
-$pluginArchivePath = Resolve-ArtifactChild -Path ([string]$pluginManifest.archive) -Root $releaseRoot -Label 'Plugin archive'
-$demoArchivePath = Resolve-ArtifactChild -Path ([string]$packageManifest.archive) -Root $releaseRoot -Label 'Demo archive'
-$phase2RunRoot = Resolve-ArtifactChild -Path (Split-Path -Parent $phase2SummaryPath) -Root (Join-Path $artifactRoot 'Reports\Phase2') -Label 'Phase 2 report run'
-$automationReportPath = Resolve-ArtifactChild -Path ([string]$verification.automationReport) -Root (Join-Path $artifactRoot 'Reports') -Label 'Automation report'
-$editorCapture = Resolve-ArtifactChild -Path ([string]$verification.editorCapture) -Root (Join-Path $artifactRoot 'Media') -Label 'Editor capture'
-$inspectorCapture = Resolve-ArtifactChild -Path ([string]$verification.inspectorCapture) -Root (Join-Path $artifactRoot 'Media') -Label 'Inspector capture'
-$packagedCapture = Resolve-ArtifactChild -Path ([string]$verification.packagedCapture) -Root (Join-Path $artifactRoot 'Media') -Label 'Packaged capture'
-
-foreach ($archivePath in @($pluginArchivePath, $demoArchivePath)) {
-    $checksumPath = "$archivePath.sha256"
-    if (-not (Test-Path -LiteralPath $checksumPath)) {
-        throw "Checksum is missing for '$archivePath'."
-    }
-    $expected = ((Get-Content -Raw -LiteralPath $checksumPath).Trim() -split '\s+')[0]
-    $actual = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    if ($actual -ne $expected.ToLowerInvariant()) {
-        throw "Checksum mismatch for '$archivePath'."
+    if ($entry.result -cne 'Passed' -or $entry.sha256 -cne $digest.sha256 -or $entry.width -ne 1280 -or $entry.height -ne 720) {
+        throw 'Reviewed screenshot bytes/resolution/result do not match current evidence.'
     }
 }
-
-$timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$deliveryRoot = Join-Path $finalRoot "SeedForge-$version-$shortRevision-$timestamp"
-$deliveryArtifacts = Join-Path $deliveryRoot 'artifacts'
-$deliveryEvidence = Join-Path $deliveryRoot 'evidence'
-$deliveryDocs = Join-Path $deliveryRoot 'docs'
-$phase1Evidence = Join-Path $deliveryEvidence 'phase1-task'
-$phase2Evidence = Join-Path $deliveryEvidence 'phase2-task'
-New-Item -ItemType Directory -Force -Path $deliveryArtifacts, $deliveryEvidence, $deliveryDocs, $phase1Evidence, $phase2Evidence | Out-Null
-
-Copy-Item -LiteralPath $pluginArchivePath, "$pluginArchivePath.sha256", $demoArchivePath, "$demoArchivePath.sha256" -Destination $deliveryArtifacts
-Copy-Item -LiteralPath (Join-Path $projectRoot 'README.md'), (Join-Path $projectRoot 'LICENSE') -Destination $deliveryRoot
-Copy-Item -Recurse -Path (Join-Path $projectRoot 'docs\*') -Destination $deliveryDocs
-Copy-Item -LiteralPath $verificationPath, $packageManifestPath, $pluginManifestPath -Destination $deliveryEvidence
-Copy-Item -Recurse -LiteralPath $phase2RunRoot -Destination (Join-Path $deliveryEvidence 'phase2-report')
-Copy-Item -Recurse -LiteralPath $automationReportPath -Destination (Join-Path $deliveryEvidence 'automation-report')
-
-Copy-Item -LiteralPath (Join-Path $projectRoot 'tasks\20260903-113501-ue58-agentic-sprint\issue.md'), (Join-Path $projectRoot 'tasks\20260903-113501-ue58-agentic-sprint\implementation_plan.md'), (Join-Path $projectRoot 'tasks\20260903-113501-ue58-agentic-sprint\evidence.md') -Destination $phase1Evidence
-Copy-Item -Path (Join-Path $projectRoot 'tasks\20260903-143421-phase2-observability\*.md') -Destination $phase2Evidence
-
-$logPatterns = @(
-    'build-editor-*.log',
-    'smoke-editor-*.log',
-    'automation-*.log',
-    'capture-demo-*.log',
-    'capture-inspector-*.log',
-    'package-plugin-*.log',
-    'package-demo-*.log',
-    'smoke-packaged-*.log'
-)
-foreach ($pattern in $logPatterns) {
-    $latestLog = Get-ChildItem -File -LiteralPath (Join-Path $artifactRoot 'Logs') -Filter $pattern |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1
-    if (-not $latestLog) {
-        throw "Required final log is missing for pattern '$pattern'."
-    }
-    Copy-Item -LiteralPath $latestLog.FullName -Destination $deliveryEvidence
+$stamp = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N')
+$finalRoot = Join-Path $projectRoot "Artifacts/Final/SeedForge-0.3.0-$stamp"
+New-Item -ItemType Directory -Path $finalRoot | Out-Null
+$sourceArchive = Join-Path $finalRoot "SeedForge-Source-$($revision.Substring(0,10)).zip"
+Invoke-SeedForgeScriptStep -Context $verificationContext -Name 'Verified source archive' -Action {
+    & git -C $projectRoot archive --format=zip "--output=$sourceArchive" $revision
+    if ($LASTEXITCODE -ne 0) { throw 'Source archive failed.' }
 }
-
-Copy-Item -LiteralPath $editorCapture, $inspectorCapture, $packagedCapture -Destination $deliveryEvidence
-
-$sourceArchive = Join-Path $deliveryArtifacts "SeedForge-Source-$shortRevision.zip"
-git -C $projectRoot archive --format=zip --output=$sourceArchive HEAD
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sourceArchive)) {
-    throw 'git archive failed to create the source package.'
+$finalPath = Join-Path $finalRoot 'release-readiness.json'
+$final = [ordered]@{
+    schema='seedforge.release-readiness'; schemaVersion=1; version='0.3.0'; sourceRevision=$revision; result='Passed'
+    machineSummary=$summaryFile.FullName; machineEvidenceIndex=$machineIndexPath
+    visualReview=$visualFile.FullName; remoteReview=$remoteFile.FullName
+    sourceArchive=$sourceArchive; distribution='GitHub default source archives only; no binary assets uploaded'
+    published=$false; summaryPath=$finalPath
 }
-
-$manifestEntries = @(
-    foreach ($file in Get-ChildItem -File -Recurse -LiteralPath $deliveryRoot | Sort-Object FullName) {
-        [ordered]@{
-            path = [System.IO.Path]::GetRelativePath($deliveryRoot, $file.FullName).Replace('\', '/')
-            size = $file.Length
-            sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-        }
-    }
-)
-$deliveryManifest = [ordered]@{
-    project = 'SeedForge'
-    version = $version
-    createdAt = (Get-Date).ToString('o')
-    sourceRevision = $revision
-    engine = 'Unreal Engine 5.8.0'
-    platform = 'Win64'
-    verification = 'Passed'
-    manifestScope = 'Every payload file; the manifest itself is protected by the adjacent SHA-256 file.'
-    files = $manifestEntries
-}
-$deliveryManifestPath = Join-Path $deliveryRoot 'DELIVERY_MANIFEST.json'
-[System.IO.File]::WriteAllText(
-    $deliveryManifestPath,
-    ($deliveryManifest | ConvertTo-Json -Depth 7) + "`r`n")
-$manifestHash = (Get-FileHash -LiteralPath $deliveryManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
-[System.IO.File]::WriteAllText(
-    "$deliveryManifestPath.sha256",
-    "$manifestHash  DELIVERY_MANIFEST.json`r`n")
-
-& (Join-Path $PSScriptRoot 'AuditDelivery.ps1') -DeliveryRoot $deliveryRoot -ExpectedRevision $revision -ExpectedVersion $version
-
-$latestPointer = Join-Path $finalRoot 'LATEST.txt'
-[System.IO.File]::WriteAllText($latestPointer, "$deliveryRoot`r`n")
-
-Write-Host "Final SeedForge delivery assembled and independently rehashed."
-Write-Host "Delivery: $deliveryRoot"
-Write-Host "Manifest: $deliveryManifestPath"
+Assert-SeedForgeScriptContext -Context $verificationContext
+[IO.File]::WriteAllText($finalPath,($final | ConvertTo-Json -Depth 7))
+$finalExpected = @(Get-SeedForgeEvidenceSnapshot -Context $verificationContext -Evidence @(
+    $machineFrozen,$reviewFrozen,$finalPath,$sourceArchive))
+$finalIndexPath = Join-Path $finalRoot 'evidence-index.json'
+Write-SeedForgeEvidenceIndex -Context $verificationContext -Path $finalIndexPath -Paths @($finalExpected | ForEach-Object { $_.path }) -ExpectedRecords $finalExpected | Out-Null
+Assert-SeedForgeScriptContext -Context $verificationContext
+Write-Host "Release readiness verified locally for $revision. This script does not merge, tag, upload or publish."
+return [pscustomobject]$final
