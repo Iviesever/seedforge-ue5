@@ -46,6 +46,10 @@ uint64 ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
     check(IsInGameThread());
     ++RunGeneration;
     Seed = InSeed;
+    ActiveRequestId = 0;
+    AppliedRequestId = 0;
+    Layout = {};
+    EncounterPlan = {};
     RunFailureCode = ESeedForgeRunFailureCode::None;
     RunFailureMessage.Reset();
     bSmokeExitRequested = false;
@@ -113,6 +117,25 @@ uint64 ASeedForgeGameplayCoordinator::StartRun(uint64 InSeed)
 }
 
 bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout& InLayout)
+{
+    if (RunState.GetState() != ESeedForgeRunState::Generating)
+    {
+        return false;
+    }
+    if (UWorld* World = GetWorld())
+    {
+        if (USeedForgeWorldSubsystem* Subsystem = World->GetSubsystem<USeedForgeWorldSubsystem>())
+        {
+            Subsystem->CancelGeneration();
+        }
+    }
+    ActiveRequestId = 0;
+    // Direct value application is not a subsystem completion: request 0 is explicit.
+    return ApplyGeneratedLayout(InLayout, 0);
+}
+
+bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(
+    const FSeedForgeLayout& InLayout, uint64 SourceRequestId)
 {
     using namespace SeedForge::GameplayCoordinator::Private;
 
@@ -250,6 +273,7 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
         return false;
     }
 
+    AppliedRequestId = SourceRequestId;
     PlayerHealth = Tuning.PlayerMaxHealth;
     GetWorldTimerManager().SetTimer(
         InteractionTimer,
@@ -267,8 +291,9 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
     UE_LOG(
         LogSeedForge,
         Display,
-        TEXT("Gameplay ready run=%llu seed=%llu layout_hash=%llu encounter_hash=%llu players=1 cores=%d enemies=%d exits=1."),
+        TEXT("Gameplay ready run=%llu request=%llu seed=%llu layout_hash=%llu encounter_hash=%llu players=1 cores=%d enemies=%d exits=1."),
         RunGeneration,
+        AppliedRequestId,
         Seed,
         Layout.CanonicalHash,
         EncounterPlan.CanonicalHash,
@@ -277,7 +302,8 @@ bool ASeedForgeGameplayCoordinator::ApplyGeneratedLayout(const FSeedForgeLayout&
     UE_LOG(
         LogSeedForge,
         Display,
-        TEXT("Applied request=%llu seed=%llu hash=%llu floors=%d walls=%d gameplay=true."),
+        TEXT("Applied request=%llu run=%llu seed=%llu hash=%llu floors=%d walls=%d gameplay=true."),
+        AppliedRequestId,
         RunGeneration,
         Seed,
         Layout.CanonicalHash,
@@ -401,6 +427,7 @@ FSeedForgeGameplaySnapshot ASeedForgeGameplayCoordinator::GetSnapshot() const
     Snapshot.EncounterHash = EncounterPlan.CanonicalHash;
     Snapshot.RunGeneration = RunGeneration;
     Snapshot.PendingRequestId = ActiveRequestId;
+    Snapshot.AppliedRequestId = AppliedRequestId;
     Snapshot.RunState = RunState.GetState();
     Snapshot.PlayerHealth = PlayerHealth;
     Snapshot.PlayerMaxHealth = Tuning.PlayerMaxHealth;
@@ -487,6 +514,7 @@ void ASeedForgeGameplayCoordinator::EndPlay(const EEndPlayReason::Type EndPlayRe
         }
     }
     ActiveRequestId = 0;
+    AppliedRequestId = 0;
     ClearRunObjects();
     Super::EndPlay(EndPlayReason);
 }
@@ -506,7 +534,7 @@ void ASeedForgeGameplayCoordinator::HandleGenerationApplied(
                 static_cast<int32>(Completion.Result.ErrorCode), *Completion.Result.ErrorMessage));
         return;
     }
-    ApplyGeneratedLayout(Completion.Result.Layout);
+    ApplyGeneratedLayout(Completion.Result.Layout, Completion.RequestId);
 }
 
 void ASeedForgeGameplayCoordinator::ClearRunObjects()
@@ -723,6 +751,7 @@ void ASeedForgeGameplayCoordinator::EnterRunFailure(
         return;
     }
     ActiveRequestId = 0;
+    AppliedRequestId = 0;
     if (UWorld* World = GetWorld())
     {
         if (USeedForgeWorldSubsystem* Subsystem = World->GetSubsystem<USeedForgeWorldSubsystem>())

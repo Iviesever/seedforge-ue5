@@ -41,6 +41,7 @@ protected:
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
+    bool ApplyGeneratedLayout(const FSeedForgeLayout& InLayout, uint64 SourceRequestId);
     void HandleGenerationApplied(const FSeedForgeAsyncCompletion& Completion);
     void ClearRunObjects();
     void TickInteractions();
@@ -85,6 +86,7 @@ private:
     FSeedForgeRunStateMachine RunState;
     uint64 Seed = 24301;
     uint64 ActiveRequestId = 0;
+    uint64 AppliedRequestId = 0;
     uint64 RunGeneration = 0;
     float PlayerHealth = 0.0f;
     double NextAttackTime = 0.0;

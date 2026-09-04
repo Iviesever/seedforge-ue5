@@ -53,7 +53,7 @@ if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
 if ($process.ExitCode -ne 0) {
     throw "Demo capture failed with exit code $($process.ExitCode). See '$logPath'."
 }
-if (-not (Select-String -LiteralPath $logPath -Pattern 'Applied request=.*hash=.*floors=.*walls=' -Quiet)) {
+if (-not (Select-String -LiteralPath $logPath -Pattern 'Applied request=[1-9][0-9]* run=[1-9][0-9]* seed=[0-9]+ hash=[1-9][0-9]* floors=[1-9][0-9]* walls=[1-9][0-9]* gameplay=true\.$' -Quiet)) {
     throw "Demo capture log is missing the applied-layout marker. See '$logPath'."
 }
 if (-not (Test-Path -LiteralPath $capturePath)) {

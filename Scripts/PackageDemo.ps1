@@ -98,7 +98,7 @@ if (-not $process.WaitForExit($SmokeTimeoutSeconds * 1000)) {
 if ($process.ExitCode -ne 0) {
     throw "Packaged demo smoke failed with exit code $($process.ExitCode). See '$smokeLog'."
 }
-if (-not (Select-String -LiteralPath $smokeLog -Pattern 'Applied request=.*hash=.*floors=.*walls=' -Quiet)) {
+if (-not (Select-String -LiteralPath $smokeLog -Pattern 'Applied request=[1-9][0-9]* run=[1-9][0-9]* seed=[0-9]+ hash=[1-9][0-9]* floors=[1-9][0-9]* walls=[1-9][0-9]* gameplay=true\.$' -Quiet)) {
     throw "Packaged demo log is missing the applied-layout marker. See '$smokeLog'."
 }
 if (-not (Test-Path -LiteralPath $smokeCapture)) {
