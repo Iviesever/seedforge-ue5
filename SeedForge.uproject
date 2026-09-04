@@ -18,6 +18,18 @@
     {
       "Name": "PythonScriptPlugin",
       "Enabled": true
+    },
+    {
+      "Name": "Fab",
+      "Enabled": false
+    },
+    {
+      "Name": "Bridge",
+      "Enabled": false
+    },
+    {
+      "Name": "MetaHumanSDK",
+      "Enabled": false
     }
   ]
 }
