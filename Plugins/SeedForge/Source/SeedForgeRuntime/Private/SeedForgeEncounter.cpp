@@ -109,9 +109,10 @@ namespace SeedForge::Encounter::Private
         return FSeedForgeEncounterResult::Success({});
     }
 
-    int32 ManhattanDistance(const FIntPoint& Left, const FIntPoint& Right)
+    int64 ManhattanDistance(const FIntPoint& Left, const FIntPoint& Right)
     {
-        return FMath::Abs(Left.X - Right.X) + FMath::Abs(Left.Y - Right.Y);
+        return FMath::Abs(static_cast<int64>(Left.X) - Right.X)
+            + FMath::Abs(static_cast<int64>(Left.Y) - Right.Y);
     }
 
     void HashByte(uint64& Hash, uint8 Byte)

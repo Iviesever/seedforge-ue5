@@ -7,22 +7,23 @@ namespace SeedForge::Path::Private
     struct FSearchNode
     {
         FIntPoint Cell = FIntPoint::ZeroValue;
-        int32 CostFromStart = MAX_int32;
-        int32 Heuristic = MAX_int32;
+        int64 CostFromStart = MAX_int64;
+        int64 Heuristic = MAX_int64;
         int32 ParentIndex = INDEX_NONE;
         bool bClosed = false;
         bool bOpen = false;
     };
 
-    int32 ManhattanDistance(const FIntPoint& Left, const FIntPoint& Right)
+    int64 ManhattanDistance(const FIntPoint& Left, const FIntPoint& Right)
     {
-        return FMath::Abs(Left.X - Right.X) + FMath::Abs(Left.Y - Right.Y);
+        return FMath::Abs(static_cast<int64>(Left.X) - Right.X)
+            + FMath::Abs(static_cast<int64>(Left.Y) - Right.Y);
     }
 
     bool IsPreferred(const FSearchNode& Left, const FSearchNode& Right)
     {
-        const int64 LeftScore = static_cast<int64>(Left.CostFromStart) + Left.Heuristic;
-        const int64 RightScore = static_cast<int64>(Right.CostFromStart) + Right.Heuristic;
+        const int64 LeftScore = Left.CostFromStart + Left.Heuristic;
+        const int64 RightScore = Right.CostFromStart + Right.Heuristic;
         if (LeftScore != RightScore)
         {
             return LeftScore < RightScore;
@@ -126,10 +127,17 @@ FSeedForgePathResult FSeedForgeGridPathfinder::FindPath(const FSeedForgePathRequ
         Current.bClosed = true;
         ++Result.ExpandedNodes;
         const FIntPoint CurrentCell = Current.Cell;
-        const int32 NextCost = Current.CostFromStart + 1;
+        const int64 NextCost = Current.CostFromStart + 1;
         for (const FIntPoint& Direction : Directions)
         {
-            const FIntPoint NeighborCell = CurrentCell + Direction;
+            const int64 NeighborX = static_cast<int64>(CurrentCell.X) + Direction.X;
+            const int64 NeighborY = static_cast<int64>(CurrentCell.Y) + Direction.Y;
+            if (NeighborX < MIN_int32 || NeighborX > MAX_int32
+                || NeighborY < MIN_int32 || NeighborY > MAX_int32)
+            {
+                continue;
+            }
+            const FIntPoint NeighborCell(static_cast<int32>(NeighborX), static_cast<int32>(NeighborY));
             if (!Walkable.Contains(NeighborCell))
             {
                 continue;
