@@ -1,88 +1,96 @@
-# SeedForge 0.2.0
+# SeedForge 0.3.0
 
-SeedForge is a UE 5.8 C++ engineering portfolio project: a deterministic asynchronous dungeon generator whose layouts can be exported, verified, structurally compared, benchmarked, and inspected inside the Editor.
+SeedForge is a UE 5.8 C++ engineering portfolio project: a deterministic procedural dungeon becomes a short, playable top-down extraction run, with local evidence from pure-model tests through a real Win64 packaged executable.
 
-![SeedForge deterministic graybox for seed 24301](docs/images/seedforge-24301.png)
+![SeedForge combat for deterministic seed 24301](docs/images/phase3-combat-24301.png)
 
-## What it demonstrates
+```text
+Seed + Config
+  -> Deterministic Layout
+  -> Deterministic Encounter Plan
+  -> Grid A*
+  -> UE Gameplay World
+  -> Collect / Fight / Extract
+  -> Automated Packaged Evidence
+```
 
-- Pure deterministic generation from explicit `uint64 Seed + Config`, with bounded work and five golden hashes.
-- Ordered validation of bounds, overlap, endpoints, and complete four-neighbor connectivity.
-- Cancellation-safe `UE::Tasks` work with newest-request-wins Game Thread application.
-- A weak `UWorldSubsystem` lifetime boundary and pure C++ HISM graybox visualization.
-- Versioned canonical JSON with exact unsigned 64-bit decimal strings, strict typed import failures, hash verification, and topology validation.
-- Deterministic Layout Diff over room and walkable-cell sets, endpoints, configuration, seed, and hash identities.
-- A headless Editor Commandlet that generates documents, diffs them, and records a reproducible 10,000-seed timing report.
-- A minimal code-native Editor Inspector with seed input, identity metrics, and canonical JSON export.
-- One verification pipeline covering Editor build/load, 41 UE Automation tests, two Editor captures, BuildPlugin, BuildCookRun, and packaged-EXE smoke.
+## What you can play
 
-## Evidence snapshot
+- Generate one dungeon and a separately versioned initial encounter from `-SeedForgeSeed=<uint64>`.
+- Move with WASD, aim with the mouse, attack with Left Mouse Button, and dash with Space.
+- Fight five bounded-A* enemies, collect three Data Cores, unlock the exit, and extract.
+- Lose all HP, then press R to restart the same seed or N to start a deterministic next seed.
+- Read HP, Core progress, exact seed, run state, exit state, controls, and terminal prompts in the code-native HUD.
 
-| Gate | Verified result |
+The map and initial encounter are reproducible for the same Seed + Config. The complete real-time run is not claimed deterministic across input timing, frame rate, or floating-point physics.
+
+## Independent-audit checkpoints
+
+| Boundary | Latest observed checkpoint |
 |---|---:|
-| UE Automation | 41 passed, 0 warnings, 0 failures |
-| Generator property sweep | 10,000 consecutive seeds |
-| Canonical document round trip | 100 generated seeds plus `MAX_uint64` |
-| Structural diff | stable sorted topology, reverse symmetry, endpoint isolation |
-| Benchmark integration | 10,000 attempted, 10,000 succeeded, 0 failed |
-| Independent plugin build | Editor Development, Game Development, Game Shipping |
-| Win64 candidate | Build, Cook, Stage, Pak, Archive and real EXE smoke |
+| UE Automation | 119 passed, 0 test/whole-log warnings, 0 failures (development checkpoint) |
+| Preserved 0.2.0 baseline | original 41 tests and five layout golden hashes remain green |
+| Encounter plan | player, exit, 3 Cores, 5 enemies; stable IDs/cells/hash; typed failures |
+| Grid A* | four-neighbor, Manhattan, fixed tie-break, bounded expansions, typed statuses |
+| Gameplay smoke | real A* movement before capture; attack, kill, 3 pickups, unlock, `Playing -> Won`; 3 decoded PNGs |
+| Ordinary input | UE viewport/input dispatch proves WASD, aim, attack, diagonal Dash, loss, same/new/rapid restarts |
+| Independent plugin | Editor Development, Game Development, Game Shipping |
+| Win64 candidate | clean `a9f5625`: Build/Cook/Stage/Pak/Archive, ordinary input, gameplay, all 4 negative processes, archive rehash |
 
-Timings are observations on one machine, never an SLA. Raw outputs live under the ignored `Artifacts/` directory; the committed evidence journals live under `tasks/`.
+These are explicitly separate checkpoints, not a claim that the current documentation commit has already passed all 16 final gates. The latest package is bound to `a9f56254f11554316302936926211e75d86d7f4d`; the 119-test development report and earlier three-target BuildPlugin have their own recorded revisions. The original 63-test delivery is historical, not the audit's final authority.
 
-## Try it
+Generated evidence stays under ignored `Artifacts/`; the [independent audit journal](tasks/20260904-102407-phase3-independent-release-audit/progress.md) preserves RED/GREEN, failed attempts and exact checkpoint paths. `VerifyPhase3.ps1` produces `MachinePassed` for one clean revision with a frozen evidence index. Original-resolution visual review and fresh PR/remote review are separately required by `FinalizeRelease.ps1`. Current publication status comes from [Release notes](docs/RELEASE_NOTES.md) and the GitHub Release, never from an old `last-*` file.
 
-Build and run the complete test suite:
+## Run and verify
 
 ```powershell
+# Build and run all deterministic/UE contracts
 .\Scripts\Build.ps1
 .\Scripts\Test.ps1 -Filter SeedForge
+
+# Exercise ordinary input and real async restarts, without the gameplay-smoke driver
+.\Scripts\TestInputSelfTest.ps1 -Seed 24301
+
+# Observe real A* movement, then attack/collect/extract and rendered captures
+.\Scripts\TestGameplay.ps1 -Seed 24301
+
+# Build one Win64 package; run ordinary input, gameplay and four negative cases
+.\Scripts\PackageGameplay.ps1 -Seed 24301
+
+# One clean-revision machine run; visual/remote review remains a separate gate
+.\Scripts\VerifyPhase3.ps1
 ```
 
-Generate two canonical layouts, import and diff them, then benchmark 10,000 seeds:
+For ordinary play, launch the packaged `Windows/SeedForge.exe`. Pass `-SeedForgeSeed=24301` or another unsigned 64-bit seed. The normal path does not depend on the smoke flag.
 
-```powershell
-.\Scripts\Report.ps1
-```
+Use PowerShell 7 for the native process wrappers. Default verification entry points require committed, clean source. For development only, Build/Test/TestGameplay/TestInputSelfTest/TestRunFailure accept explicit `-AllowDirtyDiagnostic`; diagnostic results cannot certify release artifacts. Input uses named Action/Axis mappings on Enhanced-compatible classes, not Input Action/Mapping Context assets.
 
-Open the Editor and choose **Tools > Miscellaneous > SeedForge Inspector** (the exact menu placement can vary with the UE workspace layout). The tab starts with seed `24301`; generate another seed or export its canonical JSON. A deterministic visual-QA run is also available:
-
-```powershell
-.\Scripts\CaptureInspector.ps1 -Seed 24301
-```
-
-To rebuild every deliverable from one clean revision:
-
-```powershell
-.\Scripts\VerifyAll.ps1
-.\Scripts\FinalizeRelease.ps1
-```
-
-## Runtime demo
-
-Extract `SeedForgeDemo-Win64-0.2.0-*.zip`, launch `Windows/SeedForge.exe`, and fly with W/A/S/D plus mouse look; Space/Ctrl or E/Q moves vertically. Pass `-SeedForgeSeed=<uint64>` for another layout.
+Release distribution is source-only: GitHub's default source ZIP/tarball, with no plugin/demo binary assets uploaded. Local native packaging remains mandatory evidence.
 
 ## Architecture at a glance
 
 ```text
-Seed + Config
-  -> FSeedForgeGenerator -> FSeedForgeLayout -> FSeedForgeValidator
-  -> FSeedForgeAsyncCoordinator -> USeedForgeWorldSubsystem
-  -> FSeedForgeVisualizationPlanner -> ASeedForgePreviewActor (HISM)
-
-FSeedForgeLayoutDocument <-> FSeedForgeLayoutCodec (canonical JSON)
-                         -> FSeedForgeLayoutDiffer (structural evidence)
-                         -> FSeedForgeBenchmarkRunner / ReportCommandlet
-                         -> SeedForge Inspector (Editor-only Slate UI)
+FSeedForgeGenerator (layout v1, preserved)
+  -> USeedForgeWorldSubsystem (worker + newest-request-wins apply)
+  -> ASeedForgeGameplayCoordinator (one run owner)
+       -> FSeedForgeEncounterPlanner (pure deterministic values)
+       -> FSeedForgeRunStateMachine (explicit fail-closed transitions)
+       -> ASeedForgePreviewActor (HISM floors/walls + collision)
+       -> Player / Enemy / Core / Exit / HUD actors
+       -> FSeedForgeGridPathfinder (bounded deterministic A*)
+       -> AHUD-owned Slate + render-owned capture receipts
+       -> Ordinary input / passive path proof + JSON + process status
 ```
 
-The generator and codec do not read `UObject`, `UWorld`, wall-clock time, global randomness, or unordered output iteration. See [Architecture](docs/ARCHITECTURE.md), [Layout format](docs/LAYOUT_FORMAT.md), and [Benchmarking](docs/BENCHMARKING.md).
+The 0.2.0 evidence layer remains intact: canonical layout JSON, strict import, structural Layout Diff, benchmark Commandlet, and the Slate Inspector all consume the same Runtime layout APIs.
+
+Read [Phase 3 architecture](docs/PHASE3_ARCHITECTURE.md), [gameplay loop](docs/GAMEPLAY_LOOP.md), [code walkthrough](docs/PHASE3_CODE_WALKTHROUGH.md), [acceptance matrix](docs/PHASE3_ACCEPTANCE_MATRIX.md), and [known limitations](docs/KNOWN_LIMITATIONS.md).
 
 ## Honest portfolio use
 
-Codex GPT-5.6 Sol wrote, tested, debugged, packaged, and documented this repository under a user-approved scope. The user did not hand-write the implementation. Present it as an AI-assisted engineering project and be ready to explain or modify it live; do not claim independent authorship. See [AI assistance](docs/AI_ASSISTANCE.md), [Code walkthrough](docs/CODE_WALKTHROUGH.md), and [Interview guide](docs/INTERVIEW_GUIDE.md).
+Codex GPT-5.6 Sol implemented, tested, debugged, packaged, and documented SeedForge under constraints and acceptance goals supplied by the user. The user did not independently hand-write this implementation. Present it as an AI-assisted engineering project, reproduce the evidence, understand the trade-offs, and complete personal test-first modifications before claiming coding ownership. See [AI assistance](docs/AI_ASSISTANCE.md), [Phase 3 interview guide](docs/PHASE3_INTERVIEW_GUIDE.md), and [live change drills](docs/LIVE_CHANGE_DRILLS.md).
 
-SeedForge is intentionally an engineering lab, not a complete game or a production procedural-generation framework. See [Known limitations](docs/KNOWN_LIMITATIONS.md).
+SeedForge remains a focused single-player graybox, not a production game or general procedural framework.
 
 ## License
 

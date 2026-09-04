@@ -1,19 +1,28 @@
 # Known limitations
 
 - UE 5.8 and Win64 are the only tested engine/platform combination.
-- Layouts are one integer-grid floor with axis-aligned rectangular rooms and one L-corridor chain.
-- There are no doors, enemies, loot, NavMesh, PCG, networking, persistence, replay, streaming, or gameplay loop.
-- Cancellation suppresses results but does not interrupt generation inside its placement loop.
-- Corridor `TArray::AddUnique` prioritizes clarity and is not intended for very large grids.
-- Generator/hash semantics are version-specific. Schema v1 rejects unknown schema or generator versions and implements no migration.
-- Canonical import is strict but not designed as a hostile-network parser or a general JSON framework.
-- Layout Diff compares complete valid documents; it does not apply patches, visualize changes, or recursively diff arbitrary JSON.
-- Benchmark timing includes normal process/machine variance and is not a cross-machine SLA. Only the aggregate identity is deterministic.
-- The Inspector displays identity metrics and exports JSON; it does not render or edit topology inside the tab.
-- Five golden hashes and canonical JSON tests do not guarantee identical render pixels across GPUs or drivers.
-- The graybox uses Engine basic geometry and runtime-created lighting, not production art.
-- Interactive mode is a free-fly inspection experience, not a character controller or polished game.
-- The subsystem teardown test uses a strongly held transient instance; packaged smoke separately proves real world operation.
+- Layouts remain one integer-grid floor with axis-aligned rooms and one L-corridor chain.
+- Determinism covers the map and initial encounter for the same versions/Seed/Config, not the complete real-time playthrough, input timing, timers, collision, or floating-point movement.
+- Encounter Planner callers must supply an intact canonical layout. The Gameplay Coordinator runs the complete layout validator before planning; the pure planner itself does not accept a generation config or duplicate that full topology validator.
+- Encounter selection is a deterministic role/cell ranking, not a difficulty director, encounter graph, or spatial optimization system.
+- A* uses a linear open-set scan. Its bounded `O(V^2)` worst case is acceptable for this 48x48/five-enemy slice, not a production-scale pathfinding claim.
+- Enemies replan at 2 Hz and move directly along grid waypoints. They do not use avoidance, formations, animation, NavMesh, Behavior Tree, EQS, or perception systems.
+- Enemy-to-enemy separation is guaranteed only at initial placement. Enemies can overlap while chasing.
+- Combat is one directional pulse, fixed HP/damage, one contact attack, and fixed cooldowns. There is no projectile simulation, weapon system, invulnerability animation, balancing pass, or advanced feedback.
+- Dash is a fixed Character launch with a cooldown, not a replicated/predicted ability.
+- Input mappings are text-configured named actions/axes on UE's selected Enhanced input classes. There are no rebinding, controller, touch, or accessibility settings screens.
+- The game has no multiplayer, replication, rollback, SaveGame, replay, inventory, equipment, skill tree, boss, quest system, streaming, or multi-floor generation.
+- The project explicitly disables the unused default Fab, Bridge and MetaHumanSDK Editor/content plugins. This keeps the default-disabled EOSShared from being enabled by either parent chain; Marketplace/Megascans/MetaHuman/online features are outside this project.
+- Presentation uses Engine basic shapes, HISM graybox geometry, runtime colors, simple lighting, and an AHUD-owned native Slate text overlay. There is no skeletal animation, production art/audio, localization, resolution-aware HUD layout system, or full visual polish pass. The verified gameplay capture size is 1280x720.
+- The automated smoke may teleport the real Character to shorten evidence collection. It still uses production combat/pickup/exit/state APIs, but it is not a human-playability or whole-run determinism benchmark.
+- The prior clipped combat HUD is not accepted evidence. The audit's new render-owned Editor and packaged start/combat/win captures have complete readable HUD text and were inspected at original resolution. Initial auto-exposure can make a packaged start frame darker; render pixels/exposure are not deterministic and no image brightening/cropping is performed.
+- The ordinary-input self-test is opt-in and condition-driven. Logged canonical actor placement and public damage establish bounded scenarios; only separately observed UE input/movement/restart effects count as input proof. It is not human usability, balance, accessibility, or arbitrary-input fuzzing evidence.
+- Path telemetry retains only first/latest samples plus bounded aggregates. Native A* recomputation and external geometric/time/identity checks establish consistency, not a complete movement replay or cryptographic attestation of every omitted event.
+- Cancellation suppresses stale results but does not interrupt generation inside its placement loop.
+- Corridor `TArray::AddUnique` and the strict layout codec retain their documented 0.2.0 scalability/security limits.
+- Benchmark timings remain machine observations, never cross-machine SLAs.
+- All project source, logs, temporary files, captures, cache and package output stay under the repository. The sole user-approved outside-root exception is UBT's internal `Trace*.uba` diagnostics/backups under the user's local UnrealBuildTool directory. Scripts use project-local filesystem DDC/TEMP, loose cooking and a Cook-only override disabling optional EditorDomain Zen attachments. Observed unsafe storage fails verification; targeted metadata checks are not whole-filesystem I/O attestation. Engine/global configuration is not edited.
 - Win64 archives have no installer and do not separately validate a UE prerequisite redistributable.
-- UBT/UAT can write diagnostic traces under Unreal user directories even when project-facing caches/logs are redirected.
-- AI-generated implementation must be disclosed and does not substitute for the user's personal C++ practice.
+- PowerShell 7 is required for the native process wrappers; the standalone validation harnesses additionally exercise Windows PowerShell 5.1. Native Editor success cannot substitute for packaged behavior, and dirty diagnostic runs cannot certify release artifacts.
+- The requested v0.3.0 publication is source-only. Its GitHub Release assets will not include the locally verified plugin/demo ZIPs; a user who wants to play must build/package with the documented UE 5.8 setup. This does not change older releases.
+- AI-generated implementation must be disclosed and does not substitute for the user's personal C++/UE practice.

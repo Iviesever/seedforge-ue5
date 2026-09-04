@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>SeedForgeBuild.Automation</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="BuildPlugin_Win64.Automation.cs" />
+    <Compile Include="SeedForgeBuildArguments.cs" />
+    <Reference Include="AutomationScripts.Automation"><HintPath>$(EngineRoot)\Engine\Binaries\DotNET\AutomationTool\AutomationScripts\Scripts\net10.0\AutomationScripts.Automation.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="AutomationUtils.Automation"><HintPath>$(EngineRoot)\Engine\Binaries\DotNET\AutomationTool\AutomationUtils\net10.0\AutomationUtils.Automation.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="EpicGames.Core"><HintPath>$(EngineRoot)\Engine\Binaries\DotNET\AutomationTool\EpicGames.Core.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="EpicGames.Build"><HintPath>$(EngineRoot)\Engine\Binaries\DotNET\AutomationTool\EpicGames.Build.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnrealBuildTool"><HintPath>$(EngineRoot)\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="RequireInstalledEngine" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="'$(EngineRoot)' == ''" Text="Set EngineRoot or process-only SEEDFORGE_ENGINE_ROOT to the installed UE 5.8 root." />
+    <Error Condition="!Exists('$(EngineRoot)\Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.dll')" Text="EngineRoot has no installed UnrealBuildTool.dll." />
+  </Target>
+</Project>

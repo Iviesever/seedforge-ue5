@@ -1,5 +1,7 @@
 # Interview guide
 
+This file preserves the 0.2.0 deterministic layout/evidence questions. The current gameplay, encounter, A*, state, package, and authorship answers are in `PHASE3_INTERVIEW_GUIDE.md`.
+
 ## Deterministic core
 
 ### Why is generation deterministic?

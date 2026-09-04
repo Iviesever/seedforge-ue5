@@ -26,12 +26,14 @@ ASeedForgePreviewActor::ASeedForgePreviewActor()
 
     FloorInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("Floors"));
     FloorInstances->SetupAttachment(SceneRoot);
-    FloorInstances->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    FloorInstances->SetCollisionProfileName(TEXT("BlockAll"));
+    FloorInstances->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     FloorInstances->SetMobility(EComponentMobility::Movable);
 
     WallInstances = CreateDefaultSubobject<UHierarchicalInstancedStaticMeshComponent>(TEXT("Walls"));
     WallInstances->SetupAttachment(SceneRoot);
-    WallInstances->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    WallInstances->SetCollisionProfileName(TEXT("BlockAll"));
+    WallInstances->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     WallInstances->SetMobility(EComponentMobility::Movable);
 
     static ConstructorHelpers::FObjectFinder<UStaticMesh> CubeMesh(
@@ -46,6 +48,11 @@ ASeedForgePreviewActor::ASeedForgePreviewActor()
 void ASeedForgePreviewActor::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (!bAutoGenerateOnBeginPlay)
+    {
+        return;
+    }
 
     uint64 Seed = 0x5EEDULL;
     FParse::Value(FCommandLine::Get(), TEXT("SeedForgeSeed="), Seed);
@@ -180,6 +187,16 @@ int32 ASeedForgePreviewActor::GetFloorInstanceCount() const
 int32 ASeedForgePreviewActor::GetWallInstanceCount() const
 {
     return WallInstances->GetInstanceCount();
+}
+
+void ASeedForgePreviewActor::SetAutoGenerateOnBeginPlay(bool bEnabled)
+{
+    bAutoGenerateOnBeginPlay = bEnabled;
+}
+
+bool ASeedForgePreviewActor::IsAutoGenerateOnBeginPlay() const
+{
+    return bAutoGenerateOnBeginPlay;
 }
 
 void ASeedForgePreviewActor::CaptureScreenshot()

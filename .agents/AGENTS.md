@@ -3,6 +3,7 @@
 ## Scope boundary
 
 - All SeedForge source code, assets, scripts, logs, reports, build outputs, planning documents, and temporary project files must remain under `D:\program\SeedForge`.
+- User-approved exception (2026-09-04): UE/UBT's own `Trace*.uba` diagnostic and backup files may use `C:\Users\Iviesever\AppData\Local\UnrealBuildTool`. This does not permit moving project artifacts outside the repository or modifying Engine/global folder settings.
 - Do not modify sibling directories under `D:\program` as part of SeedForge work.
 - The installed Unreal Engine at `D:\program\UnrealEngine\Epic Games\UE_5.8` is read-only project infrastructure. Do not modify Engine files.
 

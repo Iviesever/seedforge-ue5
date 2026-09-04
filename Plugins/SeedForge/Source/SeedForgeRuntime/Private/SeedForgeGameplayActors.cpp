@@ -1,0 +1,697 @@
+#include "SeedForgeGameplayActors.h"
+
+#include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/InputComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "SeedForgeGameplayCoordinator.h"
+#include "SeedForgeGameplayTypes.h"
+#include "SeedForgeInputSelfTest.h"
+#include "SeedForgeRuntime.h"
+#include "HAL/PlatformFileManager.h"
+#include "HAL/FileManager.h"
+#include "Misc/CommandLine.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
+#include "Misc/Paths.h"
+#include "Misc/EngineVersion.h"
+#include "TimerManager.h"
+#include "UObject/ConstructorHelpers.h"
+#include "Styling/CoreStyle.h"
+#include "Widgets/Layout/SBox.h"
+#include "Widgets/Text/STextBlock.h"
+
+namespace SeedForge::GameplayActors::Private
+{
+    UStaticMesh* FindCubeMesh()
+    {
+        static ConstructorHelpers::FObjectFinder<UStaticMesh> Mesh(
+            TEXT("/Engine/BasicShapes/Cube.Cube"));
+        return Mesh.Object;
+    }
+
+    UStaticMesh* FindSphereMesh()
+    {
+        static ConstructorHelpers::FObjectFinder<UStaticMesh> Mesh(
+            TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+        return Mesh.Object;
+    }
+
+    void ApplyColor(UStaticMeshComponent* Component, UObject* Owner, const FLinearColor& Color)
+    {
+        if (!Component || !Owner)
+        {
+            return;
+        }
+        UMaterialInterface* BaseMaterial = LoadObject<UMaterialInterface>(
+            nullptr,
+            TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+        if (BaseMaterial)
+        {
+            UMaterialInstanceDynamic* Material = UMaterialInstanceDynamic::Create(BaseMaterial, Owner);
+            Material->SetVectorParameterValue(TEXT("Color"), Color);
+            Component->SetMaterial(0, Material);
+        }
+    }
+
+}
+
+ASeedForgePlayerCharacter::ASeedForgePlayerCharacter()
+{
+    PrimaryActorTick.bCanEverTick = false;
+    bUseControllerRotationYaw = false;
+
+    GetCapsuleComponent()->InitCapsuleSize(42.0f, 82.0f);
+    GetCharacterMovement()->MaxWalkSpeed = FSeedForgeGameplayTuning().PlayerMoveSpeed;
+    GetCharacterMovement()->bOrientRotationToMovement = false;
+
+    Visual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("PlayerVisual"));
+    Visual->SetupAttachment(GetCapsuleComponent());
+    Visual->SetStaticMesh(SeedForge::GameplayActors::Private::FindCubeMesh());
+    Visual->SetRelativeLocation(FVector(0.0, 0.0, -12.0));
+    Visual->SetRelativeScale3D(FVector(0.62, 0.62, 1.0));
+    Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+    AttackPulse = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AttackPulse"));
+    AttackPulse->SetupAttachment(GetCapsuleComponent());
+    AttackPulse->SetStaticMesh(SeedForge::GameplayActors::Private::FindSphereMesh());
+    AttackPulse->SetRelativeLocation(FVector(170.0, 0.0, -15.0));
+    AttackPulse->SetRelativeScale3D(FVector(3.1, 1.4, 0.08));
+    AttackPulse->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    AttackPulse->SetVisibility(false);
+
+    CameraArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraArm"));
+    CameraArm->SetupAttachment(GetCapsuleComponent());
+    CameraArm->SetUsingAbsoluteRotation(true);
+    CameraArm->TargetArmLength = 1250.0f;
+    CameraArm->SetRelativeRotation(FRotator(-62.0, 0.0, 0.0));
+    CameraArm->bDoCollisionTest = false;
+    CameraArm->bInheritPitch = false;
+    CameraArm->bInheritYaw = false;
+    CameraArm->bInheritRoll = false;
+
+    Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("TopDownCamera"));
+    Camera->SetupAttachment(CameraArm, USpringArmComponent::SocketName);
+    Camera->bUsePawnControlRotation = false;
+    Camera->PostProcessSettings.bOverride_MotionBlurAmount = true;
+    Camera->PostProcessSettings.MotionBlurAmount = 0.0f;
+}
+
+void ASeedForgePlayerCharacter::SetGameplayCoordinator(
+    ASeedForgeGameplayCoordinator* InCoordinator)
+{
+    Coordinator = InCoordinator;
+    SeedForge::GameplayActors::Private::ApplyColor(
+        Visual,
+        this,
+        FLinearColor(0.05f, 0.45f, 1.0f));
+    SeedForge::GameplayActors::Private::ApplyColor(
+        AttackPulse,
+        this,
+        FLinearColor(1.0f, 0.8f, 0.05f));
+}
+
+void ASeedForgePlayerCharacter::SetAimWorldPoint(const FVector& WorldPoint)
+{
+    FVector Direction = WorldPoint - GetActorLocation();
+    Direction.Z = 0.0;
+    if (Direction.Normalize())
+    {
+        AimDirection = Direction;
+        SetActorRotation(Direction.Rotation());
+    }
+}
+
+FVector ASeedForgePlayerCharacter::GetAimDirection() const
+{
+    return AimDirection;
+}
+
+bool ASeedForgePlayerCharacter::HasTopDownCamera() const
+{
+    return CameraArm != nullptr && Camera != nullptr;
+}
+
+float ASeedForgePlayerCharacter::GetAttackCooldownSeconds() const
+{
+    return FSeedForgeGameplayTuning().AttackCooldownSeconds;
+}
+
+float ASeedForgePlayerCharacter::GetDashCooldownSeconds() const
+{
+    return FSeedForgeGameplayTuning().DashCooldownSeconds;
+}
+
+double ASeedForgePlayerCharacter::GetDashCooldownRemaining() const
+{
+    const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+    return FMath::Max(0.0, NextDashTime - Now);
+}
+
+void ASeedForgePlayerCharacter::ShowAttackPulse()
+{
+    AttackPulse->SetVisibility(true);
+    GetWorldTimerManager().SetTimer(
+        AttackPulseTimer,
+        this,
+        &ASeedForgePlayerCharacter::HideAttackPulse,
+        0.12f,
+        false);
+}
+
+void ASeedForgePlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
+{
+    Super::SetupPlayerInputComponent(PlayerInputComponent);
+    check(PlayerInputComponent);
+    PlayerInputComponent->BindAxis(TEXT("MoveForward"), this, &ASeedForgePlayerCharacter::MoveForward);
+    PlayerInputComponent->BindAxis(TEXT("MoveRight"), this, &ASeedForgePlayerCharacter::MoveRight);
+    PlayerInputComponent->BindAction(TEXT("Attack"), IE_Pressed, this, &ASeedForgePlayerCharacter::Attack);
+    PlayerInputComponent->BindAction(TEXT("Dash"), IE_Pressed, this, &ASeedForgePlayerCharacter::Dash);
+}
+
+void ASeedForgePlayerCharacter::MoveForward(float Value)
+{
+    CurrentForwardAxis = FMath::IsFinite(Value) ? FMath::Clamp(Value, -1.0f, 1.0f) : 0.0f;
+    if (!FMath::IsNearlyZero(CurrentForwardAxis))
+    {
+        AddMovementInput(FVector::ForwardVector, CurrentForwardAxis);
+    }
+}
+
+void ASeedForgePlayerCharacter::MoveRight(float Value)
+{
+    CurrentRightAxis = FMath::IsFinite(Value) ? FMath::Clamp(Value, -1.0f, 1.0f) : 0.0f;
+    if (!FMath::IsNearlyZero(CurrentRightAxis))
+    {
+        AddMovementInput(FVector::RightVector, CurrentRightAxis);
+    }
+}
+
+void ASeedForgePlayerCharacter::ResetMovementIntent()
+{
+    CurrentForwardAxis = 0.0f;
+    CurrentRightAxis = 0.0f;
+}
+
+void ASeedForgePlayerCharacter::PawnClientRestart()
+{
+    ResetMovementIntent();
+    Super::PawnClientRestart();
+}
+
+void ASeedForgePlayerCharacter::UnPossessed()
+{
+    ResetMovementIntent();
+    Super::UnPossessed();
+}
+
+void ASeedForgePlayerCharacter::Attack()
+{
+    if (ASeedForgeGameplayCoordinator* Run = Coordinator.Get())
+    {
+        if (Run->TryPlayerAttack(GetActorLocation(), AimDirection))
+        {
+            ShowAttackPulse();
+        }
+    }
+}
+
+void ASeedForgePlayerCharacter::Dash()
+{
+    const double Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0;
+    if (Now < NextDashTime)
+    {
+        return;
+    }
+    const FSeedForgeGameplayTuning Tuning;
+    NextDashTime = Now + Tuning.DashCooldownSeconds;
+    // UE sums current axes before actions, but dispatches axis callbacks after actions.
+    // Sample the summed values so press/release plus Space in one frame is current.
+    const float Forward = InputComponent ? InputComponent->GetAxisValue(TEXT("MoveForward")) : CurrentForwardAxis;
+    const float Right = InputComponent ? InputComponent->GetAxisValue(TEXT("MoveRight")) : CurrentRightAxis;
+    const FVector Direction = FSeedForgeGameplayMath::ResolveDashDirection(Forward, Right, AimDirection);
+    LaunchCharacter(Direction * Tuning.DashImpulse, true, false);
+}
+
+void ASeedForgePlayerCharacter::HideAttackPulse()
+{
+    AttackPulse->SetVisibility(false);
+}
+
+ASeedForgePlayerController::ASeedForgePlayerController()
+{
+    bShowMouseCursor = true;
+    bEnableClickEvents = false;
+    bEnableMouseOverEvents = false;
+    PrimaryActorTick.bCanEverTick = true;
+}
+
+void ASeedForgePlayerController::SetupInputComponent()
+{
+    Super::SetupInputComponent();
+    for (int32 Index = InputComponent->GetNumActionBindings() - 1; Index >= 0; --Index)
+    {
+        const FName Action = InputComponent->GetActionBinding(Index).GetActionName();
+        if (Action == TEXT("RestartSameSeed") || Action == TEXT("StartNewSeed"))
+        {
+            InputComponent->RemoveActionBinding(Index);
+        }
+    }
+    InputComponent->BindAction(TEXT("RestartSameSeed"), IE_Pressed,
+        this, &ASeedForgePlayerController::RestartSameSeed);
+    InputComponent->BindAction(TEXT("StartNewSeed"), IE_Pressed,
+        this, &ASeedForgePlayerController::StartNewSeed);
+}
+
+void ASeedForgePlayerController::FlushPressedKeys()
+{
+    Super::FlushPressedKeys();
+    if (ASeedForgePlayerCharacter* PlayerCharacter = Cast<ASeedForgePlayerCharacter>(GetPawn()))
+    {
+        PlayerCharacter->ResetMovementIntent();
+    }
+}
+
+ASeedForgeGameplayCoordinator* ASeedForgePlayerController::ResolveGameplayCoordinator()
+{
+    if (ASeedForgeGameplayCoordinator* Existing = GameplayCoordinator.Get())
+    {
+        if (!Existing->IsActorBeingDestroyed())
+        {
+            return Existing;
+        }
+    }
+    GameplayCoordinator.Reset();
+    ASeedForgeGameplayCoordinator* Unique = nullptr;
+    for (TActorIterator<ASeedForgeGameplayCoordinator> It(GetWorld()); It; ++It)
+    {
+        if (It->IsActorBeingDestroyed())
+        {
+            continue;
+        }
+        if (Unique)
+        {
+            // A host with multiple run owners is ambiguous; never pick by iteration order.
+            return nullptr;
+        }
+        Unique = *It;
+    }
+    GameplayCoordinator = Unique;
+    return Unique;
+}
+
+void ASeedForgePlayerController::RestartSameSeed()
+{
+    if (ASeedForgeGameplayCoordinator* Run = ResolveGameplayCoordinator())
+    {
+        Run->RestartSameSeed();
+    }
+}
+
+void ASeedForgePlayerController::StartNewSeed()
+{
+    if (ASeedForgeGameplayCoordinator* Run = ResolveGameplayCoordinator())
+    {
+        Run->StartNewSeed();
+    }
+}
+
+void ASeedForgePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    if (InputSelfTestComponent)
+    {
+        InputSelfTestComponent->OnFinished().Remove(InputSelfTestFinishedHandle);
+        InputSelfTestFinishedHandle.Reset();
+        InputSelfTestComponent->Cancel();
+    }
+    GameplayCoordinator.Reset();
+    Super::EndPlay(EndPlayReason);
+}
+
+void ASeedForgePlayerController::BeginPlay()
+{
+    Super::BeginPlay();
+    FInputModeGameAndUI InputMode;
+    InputMode.SetHideCursorDuringCapture(false);
+    InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    SetInputMode(InputMode);
+    if (FParse::Param(FCommandLine::Get(), TEXT("SeedForgeInputSelfTest"))) { BeginInputSelfTest(); }
+}
+
+void ASeedForgePlayerController::PreProcessInput(float DeltaTime, bool bGamePaused)
+{
+    Super::PreProcessInput(DeltaTime, bGamePaused);
+    if (InputSelfTestComponent) { InputSelfTestComponent->BeforeInput(DeltaTime, bGamePaused); }
+}
+
+void ASeedForgePlayerController::PostProcessInput(float DeltaTime, bool bGamePaused)
+{
+    Super::PostProcessInput(DeltaTime, bGamePaused);
+    if (InputSelfTestComponent) { InputSelfTestComponent->AfterInput(DeltaTime, bGamePaused); }
+}
+
+void ASeedForgePlayerController::BeginInputSelfTest()
+{
+    FSeedForgeInputSelfTestOptions Options;
+    FString Error;
+    const bool bValid = FSeedForgeInputSelfTestCodec::ParseOptions(FCommandLine::Get(), Options, Error);
+    InputSelfTestTracePath = Options.TracePath;
+    if (!bValid)
+    {
+        FSeedForgeInputSelfTestTrace Failure;
+        Failure.SourceIdentity = Options.SourceIdentity.Left(128);
+        Failure.ExpectedInitialSeed = Options.Seed;
+        Failure.EngineVersion = FEngineVersion::Current().ToString();
+        Failure.StartedAtUtc = Failure.CompletedAtUtc = FDateTime::UtcNow();
+        Failure.StartedFrame = Failure.CompletedFrame = GFrameCounter;
+        Failure.CompletionCount = 1;
+        Failure.FailureCode = ESeedForgeInputSelfTestFailure::InvalidArguments;
+        if (!FSeedForgeInputSelfTestCodec::ParseSourceIdentity(Options.SourceIdentity, Failure.SourceKind, Failure.SourceRevision))
+        {
+            Failure.FailureCode = ESeedForgeInputSelfTestFailure::InvalidSourceIdentity;
+        }
+        Failure.FailureMessage = Error;
+        HandleInputSelfTestFinished(Failure);
+        return;
+    }
+    InputSelfTestComponent = NewObject<USeedForgeInputSelfTestComponent>(this, TEXT("InputSelfTest"));
+    AddInstanceComponent(InputSelfTestComponent);
+    InputSelfTestComponent->RegisterComponent();
+    InputSelfTestFinishedHandle = InputSelfTestComponent->OnFinished().AddUObject(
+        this, &ASeedForgePlayerController::HandleInputSelfTestFinished);
+    InputSelfTestComponent->Start(Options.SourceIdentity, Options.Seed);
+}
+
+void ASeedForgePlayerController::HandleInputSelfTestFinished(const FSeedForgeInputSelfTestTrace& Trace)
+{
+    if (bInputSelfTestExitRequested) { return; }
+    bInputSelfTestExitRequested = true;
+    if (InputSelfTestComponent)
+    {
+        InputSelfTestComponent->OnFinished().Remove(InputSelfTestFinishedHandle);
+        InputSelfTestFinishedHandle.Reset();
+        InputSelfTestComponent->Cancel();
+    }
+    FString ValidationError;
+    const bool bPassed = Trace.bSuccess && FSeedForgeInputSelfTestCodec::ValidateEvidence(Trace, ValidationError);
+    bool bWritten = false;
+    const bool bUsablePath = !InputSelfTestTracePath.IsEmpty() && !FPaths::IsRelative(InputSelfTestTracePath)
+        && FPaths::GetExtension(InputSelfTestTracePath).Equals(TEXT("json"), ESearchCase::IgnoreCase);
+    if (bUsablePath)
+    {
+        InputSelfTestTracePath = FPaths::ConvertRelativePathToFull(InputSelfTestTracePath);
+        FPaths::MakeStandardFilename(InputSelfTestTracePath);
+        IPlatformFile& Files = FPlatformFileManager::Get().GetPlatformFile();
+        if (!Files.FileExists(*InputSelfTestTracePath)
+            && Files.CreateDirectoryTree(*FPaths::GetPath(InputSelfTestTracePath)))
+        {
+            const FString Json = FSeedForgeInputSelfTestCodec::ExportCanonicalJson(Trace) + LINE_TERMINATOR;
+            bWritten = FFileHelper::SaveStringToFile(Json, *InputSelfTestTracePath,
+                FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &IFileManager::Get(), FILEWRITE_NoReplaceExisting);
+        }
+    }
+    if (bPassed && bWritten)
+    {
+        UE_LOG(LogSeedForge, Display, TEXT("SEEDFORGE_INPUT_SELFTEST_SUCCESS source=%s trace=%s written=true"),
+            *Trace.SourceIdentity.Left(128), *InputSelfTestTracePath);
+        FPlatformMisc::RequestExitWithStatus(false, 0);
+        return;
+    }
+    const ESeedForgeInputSelfTestFailure Code = !bWritten ? ESeedForgeInputSelfTestFailure::TraceWriteFailed
+        : (Trace.bSuccess ? ESeedForgeInputSelfTestFailure::MissingInputEvidence : Trace.FailureCode);
+    UE_LOG(LogSeedForge, Error, TEXT("SEEDFORGE_INPUT_SELFTEST_FAILURE code=%s source=%s trace=%s written=%s"),
+        LexToString(Code), *Trace.SourceIdentity.Left(128), *InputSelfTestTracePath, bWritten ? TEXT("true") : TEXT("false"));
+    // Save synchronously, then preserve exit 2 even before the first Editor frame.
+    FPlatformMisc::RequestExitWithStatus(true, 2);
+}
+
+void ASeedForgePlayerController::PlayerTick(float DeltaTime)
+{
+    Super::PlayerTick(DeltaTime);
+    ASeedForgePlayerCharacter* PlayerCharacter = Cast<ASeedForgePlayerCharacter>(GetPawn());
+    if (!PlayerCharacter)
+    {
+        return;
+    }
+
+    FVector RayOrigin;
+    FVector RayDirection;
+    if (!DeprojectMousePositionToWorld(RayOrigin, RayDirection)
+        || FMath::IsNearlyZero(RayDirection.Z))
+    {
+        return;
+    }
+    const double PlaneZ = PlayerCharacter->GetActorLocation().Z;
+    const double Distance = (PlaneZ - RayOrigin.Z) / RayDirection.Z;
+    if (Distance > 0.0)
+    {
+        PlayerCharacter->SetAimWorldPoint(RayOrigin + RayDirection * Distance);
+    }
+}
+
+ASeedForgeEnemyPawn::ASeedForgeEnemyPawn()
+{
+    PrimaryActorTick.bCanEverTick = true;
+    Visual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("EnemyVisual"));
+    SetRootComponent(Visual);
+    Visual->SetStaticMesh(SeedForge::GameplayActors::Private::FindCubeMesh());
+    Visual->SetRelativeScale3D(FVector(0.62, 0.62, 0.72));
+    Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
+void ASeedForgeEnemyPawn::Tick(float DeltaSeconds)
+{
+    Super::Tick(DeltaSeconds);
+    if (!WorldPath.IsValidIndex(PathIndex))
+    {
+        return;
+    }
+    const FVector Target = WorldPath[PathIndex];
+    const FVector From = GetActorLocation();
+    const int32 ConsumedIndex = PathIndex;
+    const FVector Next = FMath::VInterpConstantTo(
+        From,
+        Target,
+        DeltaSeconds,
+        FSeedForgeGameplayTuning().EnemyMoveSpeed);
+    SetActorLocation(Next, false);
+    LastMove.Sequence = ++MovementSequence;
+    LastMove.Frame = GFrameCounter;
+    LastMove.PathRevision = PathRevision;
+    LastMove.WaypointIndex = ConsumedIndex;
+    LastMove.From = From;
+    LastMove.Target = Target;
+    LastMove.To = GetActorLocation();
+    LastMove.DeltaSeconds = DeltaSeconds;
+    FVector Facing = Target - GetActorLocation();
+    Facing.Z = 0.0;
+    if (!Facing.IsNearlyZero())
+    {
+        SetActorRotation(Facing.Rotation());
+    }
+    if (FVector::DistSquared2D(Next, Target) <= FMath::Square(4.0))
+    {
+        ++PathIndex;
+    }
+}
+
+void ASeedForgeEnemyPawn::Configure(uint32 InStableId, const FIntPoint& InCell)
+{
+    StableId = InStableId;
+    SpawnCell = InCell;
+    SeedForge::GameplayActors::Private::ApplyColor(
+        Visual,
+        this,
+        FLinearColor(0.95f, 0.08f, 0.06f));
+}
+
+void ASeedForgeEnemyPawn::SetPath(TArray<FVector> InWorldPath)
+{
+    WorldPath = MoveTemp(InWorldPath);
+    PathIndex = 0;
+    ++PathRevision;
+    LastMove = {};
+}
+
+void ASeedForgeEnemyPawn::ClearPath()
+{
+    WorldPath.Reset();
+    PathIndex = 0;
+    ++PathRevision;
+    LastMove = {};
+}
+
+uint32 ASeedForgeEnemyPawn::GetStableId() const
+{
+    return StableId;
+}
+
+FIntPoint ASeedForgeEnemyPawn::GetSpawnCell() const
+{
+    return SpawnCell;
+}
+
+FSeedForgeEnemyPathSnapshot ASeedForgeEnemyPawn::GetPathSnapshot() const
+{
+    FSeedForgeEnemyPathSnapshot Snapshot;
+    Snapshot.Revision = PathRevision;
+    Snapshot.NextWaypointIndex = PathIndex;
+    // Refuse oversized diagnostic copies without altering the production path.
+    if (WorldPath.Num() < FSeedForgeEnemyPathProof::MaxPathCells) { Snapshot.Waypoints = WorldPath; }
+    Snapshot.LastMove = LastMove;
+    return Snapshot;
+}
+
+ASeedForgeCorePickup::ASeedForgeCorePickup()
+{
+    PrimaryActorTick.bCanEverTick = false;
+    Visual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("CoreVisual"));
+    SetRootComponent(Visual);
+    Visual->SetStaticMesh(SeedForge::GameplayActors::Private::FindSphereMesh());
+    Visual->SetRelativeScale3D(FVector(0.42));
+    Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
+void ASeedForgeCorePickup::Configure(uint32 InStableId, const FIntPoint& InCell)
+{
+    StableId = InStableId;
+    SpawnCell = InCell;
+    SeedForge::GameplayActors::Private::ApplyColor(
+        Visual,
+        this,
+        FLinearColor(0.0f, 0.95f, 1.0f));
+}
+
+uint32 ASeedForgeCorePickup::GetStableId() const
+{
+    return StableId;
+}
+
+FIntPoint ASeedForgeCorePickup::GetSpawnCell() const
+{
+    return SpawnCell;
+}
+
+ASeedForgeExitActor::ASeedForgeExitActor()
+{
+    PrimaryActorTick.bCanEverTick = false;
+    Visual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("ExitVisual"));
+    SetRootComponent(Visual);
+    Visual->SetStaticMesh(SeedForge::GameplayActors::Private::FindCubeMesh());
+    Visual->SetRelativeScale3D(FVector(0.76, 0.76, 1.8));
+    Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
+void ASeedForgeExitActor::Configure(const FIntPoint& InCell)
+{
+    SpawnCell = InCell;
+    SetUnlocked(false);
+}
+
+void ASeedForgeExitActor::SetUnlocked(bool bInUnlocked)
+{
+    bUnlocked = bInUnlocked;
+    SeedForge::GameplayActors::Private::ApplyColor(
+        Visual,
+        this,
+        bUnlocked
+            ? FLinearColor(0.05f, 1.0f, 0.15f)
+            : FLinearColor(1.0f, 0.22f, 0.02f));
+}
+
+bool ASeedForgeExitActor::IsUnlocked() const
+{
+    return bUnlocked;
+}
+
+FIntPoint ASeedForgeExitActor::GetSpawnCell() const
+{
+    return SpawnCell;
+}
+
+void ASeedForgeHUD::PostRender()
+{
+    // Base AHUD skips DrawHUD while hidden or showing debug information.
+    // Persistent Slate content must honor the same visibility boundary.
+    if (!bShowHUD || bShowDebugInfo || !GetWorld() || !Canvas)
+    {
+        RemoveOverlay();
+    }
+    Super::PostRender();
+}
+
+void ASeedForgeHUD::DrawHUD()
+{
+    if (Canvas)
+    {
+        Super::DrawHUD();
+    }
+    UGameViewportClient* Viewport = GetWorld() ? GetWorld()->GetGameViewport() : nullptr;
+    if (!Viewport || !Viewport->GetGameViewportWidget().IsValid())
+    {
+        RemoveOverlay();
+        return;
+    }
+    ASeedForgeGameplayCoordinator* Coordinator = nullptr;
+    for (TActorIterator<ASeedForgeGameplayCoordinator> It(GetWorld()); It; ++It)
+    {
+        Coordinator = *It;
+        break;
+    }
+    if (!Coordinator)
+    {
+        RemoveOverlay();
+        return;
+    }
+    if (OverlayViewport.Get() != Viewport)
+    {
+        RemoveOverlay();
+    }
+    if (!Overlay.IsValid())
+    {
+        Overlay = SNew(SBox)
+            .Tag(TEXT("SeedForgeHUD"))
+            .Visibility(EVisibility::HitTestInvisible)
+            .Padding(32.0f)
+            .HAlign(HAlign_Left)
+            .VAlign(VAlign_Top)
+            [
+                SAssignNew(StatusText, STextBlock)
+                .Font(FCoreStyle::GetDefaultFontStyle("Regular", 14))
+                .ColorAndOpacity(FLinearColor::White)
+                .ShadowColorAndOpacity(FLinearColor::Black)
+                .ShadowOffset(FVector2D(1.0, 1.0))
+                .WrapTextAt(440.0f)
+                .LineHeightPercentage(1.2f)
+            ];
+        OverlayViewport = Viewport;
+        Viewport->AddViewportWidgetContent(Overlay.ToSharedRef());
+    }
+    StatusText->SetText(FText::FromString(FSeedForgeGameplayPresentation::BuildHudText(Coordinator->GetSnapshot())));
+}
+
+void ASeedForgeHUD::RemoveOverlay()
+{
+    if (Overlay.IsValid() && OverlayViewport.IsValid())
+    {
+        OverlayViewport->RemoveViewportWidgetContent(Overlay.ToSharedRef());
+    }
+    Overlay.Reset();
+    StatusText.Reset();
+    OverlayViewport.Reset();
+}
+
+void ASeedForgeHUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    RemoveOverlay();
+    Super::EndPlay(EndPlayReason);
+}

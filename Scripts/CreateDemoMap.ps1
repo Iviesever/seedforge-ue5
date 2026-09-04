@@ -16,7 +16,8 @@ $cacheRoot = Join-Path $projectRoot '.cache\DerivedDataCache'
 $userRoot = Join-Path $projectRoot '.user'
 
 New-Item -ItemType Directory -Force -Path $logRoot, $cacheRoot, $userRoot | Out-Null
-Set-Item -Path 'Env:UE-LocalDataCachePath' -Value $cacheRoot
+. (Join-Path $PSScriptRoot 'BuildEnvironment.ps1')
+Initialize-SeedForgeBuildEnvironment -ProjectRoot $projectRoot
 
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $logPath = Join-Path $logRoot "create-demo-map-$timestamp.log"
@@ -33,6 +34,7 @@ $arguments = @(
     "-abslog=$logPath"
 )
 
+$arguments += @(Get-SeedForgeRuntimeArguments -ProjectRoot $projectRoot)
 $process = Start-Process -FilePath $editor -ArgumentList $arguments -PassThru -WindowStyle Hidden
 if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
     $process.Kill($true)
@@ -49,5 +51,7 @@ $mapFile = Join-Path $projectRoot 'Content\Maps\SeedForgeDemo.umap'
 if (-not (Test-Path -LiteralPath $mapFile)) {
     throw "Demo map was not created at '$mapFile'."
 }
+. (Join-Path $PSScriptRoot 'RuntimeStorageValidation.ps1')
+Assert-SeedForgeRuntimeStorage -Path $logPath -ProjectRoot $projectRoot | Out-Null
 
 Write-Host "Demo map generated. Map: $mapFile Log: $logPath"
