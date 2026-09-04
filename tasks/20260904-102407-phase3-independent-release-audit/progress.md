@@ -30,11 +30,11 @@
 - [x] C — SF-IRA-004 local: 5 real-input/pure RED→GREEN tests, 3 restart regressions, final full 77/77; includes same-frame movement+Space, focus flush, unpossessed release, and cooldown preservation.
 - [x] D — SF-IRA-006 local: checked neighbors and int64 distance/cost; 3 bug REDs plus 3 preservation cases, focused 6/6 and full 83/83, existing path/encounter/goldens preserved.
 - [x] E — SF-IRA-007/009 local: true completion/request identity, cleared pending hashes, direct apply request 0; 3 focused, 6 failure, 3 restart and full 86/86; script marker negative checks pass.
-- [ ] F — SF-IRA-005: render-owned screenshots and strict PNG proof.
-- [ ] G — SF-IRA-002: immutable clean-revision evidence and negative harness.
+- [x] F local — SF-IRA-005: render-owned screenshots, strict PNG proof and inspected Editor/packaged triplets; final-candidate repeat remains below.
+- [x] G local — SF-IRA-002: immutable clean-revision evidence, negative harnesses and actual BuildPlugin/BuildCookRun/package evidence; final-candidate repeat remains below.
 - [x] G prelude only: project-local UBA/DDC inheritance at 11 launchers; Build/BuildCookRun scoped remote-disable flags; PowerShell RED→GREEN and full 86/86. This does not close the remaining G gates.
-- [ ] H — SF-IRA-008: real path/movement/restart/input integration.
-- [ ] I — documentation and disclosure calibrated to new evidence.
+- [x] H local — SF-IRA-008: real path/movement/restart/input integration in Editor and the clean packaged application.
+- [x] I preparation — current docs/disclosure and illustrative screenshots calibrated to checkpoint evidence; documentation commit and final verification follow.
 - [ ] Gates 1–16: all not-run for this audit until fresh results are recorded.
 - [ ] Publication: final PR update, merge, source-only Release, remote re-read.
 
@@ -101,3 +101,15 @@ H7 is committed at clean `d896e5c1d2a9ac0c79a666f2d24ea4167b328f1a`. `PackageGam
 `root-cause-cook-storage.md` records both source-backed issues and the preserved failed run. The relative string is a BaseDir-relative length comparison, not the actual work directory; it resolves inside this project. The narrowly extended guard requires an explicit caller executable directory matching the unique native Base Directory. The independent EditorDomain CookAttachments client is prevented with a Cook-only Editor ini override; LogZen remains prohibited. Five known global Zen metadata size/hash/time triples and the preexisting ProgramData/Epic directory metadata were unchanged in the read-only recheck; no whole-system I/O claim is made.
 
 Parent independent synthetic checks: 94/94 RuntimeStorage on PS7.6 (`113033`) and PS5.1 (`113037`), 55/55 Pak/IoStore correlation regression (`113038`), and the actual PackageDemo missing-attachment-override RED then source-contract GREEN. These UTC-stamped helper results and full source reasoning are in `runtime-relative-shader-evidence.md` and the Cook RCA. A clean corrected commit and another real PackageGameplay run remain necessary; the old rejected artifact is not relabeled as success.
+
+## 19:41 clean packaged checkpoint and I documentation
+
+Cook correction `a9f56254f11554316302936926211e75d86d7f4d` follows the independently reviewed relative-base/drive-root and EditorDomain fixes (final RuntimeStorage 96/96 on both PS versions). The second actual PackageGameplay, `193928` through `194106`, passed its entire clean-source pipeline: full native BuildCookRun, original-log/storage association, ordinary capture, ordinary input/four real runs, H7 path/captures and four expected-negative native exits. Its 406864401-byte ZIP/sidecar/manifests were rehashed and the primary independently sealed 49 evidence files. No LogZen initialization remains in the original UAT/Cook/Pak logs. See `package-live-evidence.md` for exact paths and limits.
+
+The primary inspected all three original packaged gameplay images and copied them byte-for-byte into tracked docs/images; hashes are recorded in `documentation-image-evidence.md`. The darker initial exposure is disclosed, not edited. Earlier tracked screenshots remain in Git history; original Artifact PNGs and failed runs remain unchanged.
+
+I follows `task-009-docs-final.md`: two bounded documentation owners and the primary updated only current explanatory/release/workflow docs and the illustrative images. Parent review checked source ownership, exact path/count/hash facts, all local Markdown links and repository/whitespace gates. One wording issue was corrected: determinism explicitly requires the same seed and only canonical layout-document bytes, not dynamic trace/receipt bytes.
+
+A fresh remote fetch during this documentation checkpoint still finds main/v0.2.0 at `9a306f8ff72cb660d3c04b09806787df21191d45`, no v0.3.0 tag and the unpushed local branch 28 commits ahead/0 behind. PR #1 is open Draft/unmerged, remote head `18c255db750b8edf3576fe348b47fd0b6b8d312e`, mergeable, with no review submissions or inline threads. This is a pre-final observation, not the final remote review.
+
+Next is the documentation/image commit, then all 16 final gates on that exact clean candidate, six new visual reviews, fresh remote review, finalizer, push/PR update, authorized merge and source-only Release. Those final operations are not claimed complete by this immutable pre-final journal.

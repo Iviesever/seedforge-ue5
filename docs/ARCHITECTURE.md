@@ -30,9 +30,15 @@ The subsystem owns this coordinator at the UObject boundary, captures itself wea
 
 ### Deterministic gameplay model
 
-`FSeedForgeEncounterPlanner` selects one player, one exit, three Cores, and five enemies from canonical walkable cells using explicit score/order/tie rules. Its version/hash is independent from the preserved layout identity. `FSeedForgeGridPathfinder` runs four-neighbor unit-cost A* with Manhattan heuristic, fixed East/South/West/North neighbors, `(F,H,Y,X)` selection, and an expansion budget. `FSeedForgeRunStateMachine` exclusively owns Generating/Playing/Won/Lost/Restarting transitions and Core/exit eligibility.
+`FSeedForgeEncounterPlanner` selects one player, one exit, three Cores, and five enemies from canonical walkable cells using explicit score/order/tie rules. Its version/hash is independent from the preserved layout identity. `FSeedForgeGridPathfinder` runs four-neighbor unit-cost A* with Manhattan heuristic, fixed East/South/West/North neighbors, `(F,H,Y,X)` selection, and an expansion budget. Coordinate neighbors are checked and distance/cost arithmetic is widened before subtraction/absolute value. `FSeedForgeRunStateMachine` exclusively owns Generating/Playing/Won/Lost/Restarting/Failed transitions and Core/exit eligibility.
 
-Enemy Pawns move every frame but search only on a bounded 2 Hz coordinator timer. Combat, player/enemy HP, cooldowns, pickup proximity, exit unlock, restart cleanup, and smoke are centralized in the coordinator; actors never reconstruct topology or terminal state.
+Enemy Pawns move every frame but search only on a bounded 2 Hz coordinator timer. The Coordinator owns run state, player/enemy HP, attack cooldown, combat orchestration, pickup/exit rules, restart cleanup and smoke. Character movement/Dash state and each enemy's path/motion remain on their production actors. Those actors consume canonical topology and the Coordinator's run authority rather than reconstructing another map or terminal state.
+
+Restart/new-seed input belongs to the persistent PlayerController, so it survives an absent/destroyed pawn and can supersede a pending request. Movement/attack/Dash remain on the Character; Dash combines the current live axes. Run generation and actual subsystem request identity are distinct; pending/failed snapshots clear old applied hashes.
+
+The AHUD owns a native Slate text overlay and removes it on lifecycle changes. Capture owns its viewport/render/pixel/save completion, unique token/run/request and delegate cleanup. Gameplay smoke passively observes real A* movement before its first capture, then exercises production combat/pickup/exit APIs. A separate opt-in ordinary-input component injects UE viewport events, records effects and real async restart ownership, and cleans held keys/delegates. Neither uses desktop macros or directly assigns successful run state/hashes.
+
+The PowerShell layer owns verification authority: immutable clean revision before/after external processes, strict logs, PNG and trace checks, exact UAT invocation/product correlation, archive rehash and immediate frozen child evidence. Native declared SHA strings are not source attestation. Machine aggregation, visual/remote review and publication are distinct stages.
 
 ## Portable evidence path
 
@@ -72,6 +78,6 @@ The corridor `AddUnique` path remains intentionally simple and can approach quad
 
 ## Determinism boundary
 
-Guaranteed and tested for the same SeedForge algorithm/encounter version, configuration, Win64 target, and UE 5.8 toolchain: topology, initial encounter IDs/cells, canonical JSON bytes, layout/encounter hashes, A* request result, structural diff order, and aggregate benchmark identity.
+For the same seed, SeedForge algorithm/encounter versions, configuration, Win64 target and UE 5.8 toolchain, the tested model contract covers topology, initial encounter IDs/cells, canonical layout-document JSON bytes and layout/encounter hashes. Identical A* requests produce the same path/status/expansion result; identical document pairs and benchmark input sequences preserve structural diff order and aggregate identity.
 
-Not guaranteed: a complete real-time playthrough, input/timer/physics behavior across frame rates, timings, render pixels, future versions, other platforms/compilers, or a precise cancellation instruction boundary.
+Not guaranteed: a complete real-time playthrough, input/timer/physics behavior across frame rates, timings, render pixels, runtime input/gameplay trace or capture-receipt bytes (which include request IDs, frames, UTC and GUIDs), future versions, other platforms/compilers, or a precise cancellation instruction boundary.

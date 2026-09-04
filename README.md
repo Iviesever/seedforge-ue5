@@ -24,19 +24,22 @@ Seed + Config
 
 The map and initial encounter are reproducible for the same Seed + Config. The complete real-time run is not claimed deterministic across input timing, frame rate, or floating-point physics.
 
-## Evidence snapshot
+## Independent-audit checkpoints
 
-| Gate | Latest Phase 3 result |
+| Boundary | Latest observed checkpoint |
 |---|---:|
-| UE Automation | 63 passed, 0 warnings, 0 failures |
+| UE Automation | 119 passed, 0 test/whole-log warnings, 0 failures (development checkpoint) |
 | Preserved 0.2.0 baseline | original 41 tests and five layout golden hashes remain green |
 | Encounter plan | player, exit, 3 Cores, 5 enemies; stable IDs/cells/hash; typed failures |
 | Grid A* | four-neighbor, Manhattan, fixed tie-break, bounded expansions, typed statuses |
-| Gameplay smoke | attack, kill, 3 pickups, unlock, `Playing -> Won`, JSON reparse, 3 PNGs |
+| Gameplay smoke | real A* movement before capture; attack, kill, 3 pickups, unlock, `Playing -> Won`; 3 decoded PNGs |
+| Ordinary input | UE viewport/input dispatch proves WASD, aim, attack, diagonal Dash, loss, same/new/rapid restarts |
 | Independent plugin | Editor Development, Game Development, Game Shipping |
-| Win64 candidate | Build, Cook, Stage, Pak, Archive, ordinary launch, packaged gameplay smoke |
+| Win64 candidate | clean `a9f5625`: Build/Cook/Stage/Pak/Archive, ordinary input, gameplay, all 4 negative processes, archive rehash |
 
-Generated evidence stays under ignored `Artifacts/`; committed PACT journals live under `tasks/20260903-191047-phase3-playable-vertical-slice/`. The final exact revision and artifact paths are authoritative only in `Artifacts/Reports/phase3-verification-last.json` after a clean `VerifyPhase3.ps1` run.
+These are explicitly separate checkpoints, not a claim that the current documentation commit has already passed all 16 final gates. The latest package is bound to `a9f56254f11554316302936926211e75d86d7f4d`; the 119-test development report and earlier three-target BuildPlugin have their own recorded revisions. The original 63-test delivery is historical, not the audit's final authority.
+
+Generated evidence stays under ignored `Artifacts/`; the [independent audit journal](tasks/20260904-102407-phase3-independent-release-audit/progress.md) preserves RED/GREEN, failed attempts and exact checkpoint paths. `VerifyPhase3.ps1` produces `MachinePassed` for one clean revision with a frozen evidence index. Original-resolution visual review and fresh PR/remote review are separately required by `FinalizeRelease.ps1`. Current publication status comes from [Release notes](docs/RELEASE_NOTES.md) and the GitHub Release, never from an old `last-*` file.
 
 ## Run and verify
 
@@ -45,17 +48,24 @@ Generated evidence stays under ignored `Artifacts/`; committed PACT journals liv
 .\Scripts\Build.ps1
 .\Scripts\Test.ps1 -Filter SeedForge
 
-# Drive the real Editor World through attack/collect/extract and capture evidence
+# Exercise ordinary input and real async restarts, without the gameplay-smoke driver
+.\Scripts\TestInputSelfTest.ps1 -Seed 24301
+
+# Observe real A* movement, then attack/collect/extract and rendered captures
 .\Scripts\TestGameplay.ps1 -Seed 24301
 
-# Build one Win64 package, launch its ordinary path, then run packaged gameplay smoke
+# Build one Win64 package; run ordinary input, gameplay and four negative cases
 .\Scripts\PackageGameplay.ps1 -Seed 24301
 
-# Final clean-revision aggregate: build, all tests, reports, plugin, package, both smokes
+# One clean-revision machine run; visual/remote review remains a separate gate
 .\Scripts\VerifyPhase3.ps1
 ```
 
 For ordinary play, launch the packaged `Windows/SeedForge.exe`. Pass `-SeedForgeSeed=24301` or another unsigned 64-bit seed. The normal path does not depend on the smoke flag.
+
+Use PowerShell 7 for the native process wrappers. Default verification entry points require committed, clean source. For development only, Build/Test/TestGameplay/TestInputSelfTest/TestRunFailure accept explicit `-AllowDirtyDiagnostic`; diagnostic results cannot certify release artifacts. Input uses named Action/Axis mappings on Enhanced-compatible classes, not Input Action/Mapping Context assets.
+
+Release distribution is source-only: GitHub's default source ZIP/tarball, with no plugin/demo binary assets uploaded. Local native packaging remains mandatory evidence.
 
 ## Architecture at a glance
 
@@ -68,7 +78,8 @@ FSeedForgeGenerator (layout v1, preserved)
        -> ASeedForgePreviewActor (HISM floors/walls + collision)
        -> Player / Enemy / Core / Exit / HUD actors
        -> FSeedForgeGridPathfinder (bounded deterministic A*)
-       -> Gameplay smoke JSON + screenshots + process status
+       -> AHUD-owned Slate + render-owned capture receipts
+       -> Ordinary input / passive path proof + JSON + process status
 ```
 
 The 0.2.0 evidence layer remains intact: canonical layout JSON, strict import, structural Layout Diff, benchmark Commandlet, and the Slate Inspector all consume the same Runtime layout APIs.

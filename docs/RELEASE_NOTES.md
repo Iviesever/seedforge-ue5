@@ -1,16 +1,25 @@
 # Release notes
 
-## SeedForge 0.3.0 candidate
+## SeedForge 0.3.0 — pre-final documentation checkpoint
+
+These notes record the checkpoint following clean `a9f56254f11554316302936926211e75d86d7f4d`, before the documentation/images candidate's final gates. They are not a live assertion about remote publication; use generated release-readiness evidence and the PR/Release record for the final SHA, results and current status.
 
 - Deterministic initial encounter plan and independent encounter hash.
-- Pure bounded four-neighbor A* and explicit run state machine.
-- Code-native top-down Player/Controller/Enemy/Core/Exit/HUD and complete fight/collect/extract loop.
-- Same-seed restart, deterministic next seed, CLI seed, HP/death, attack/dash cooldowns, and bounded enemy replans.
-- Editor and packaged production-path gameplay smoke with exact JSON, strict log audit, and start/combat/win captures.
-- 22 new Automation tests, bringing the complete suite to 63 while preserving all original 41 tests and five layout hashes.
+- Pure bounded four-neighbor A* with checked/wide coordinate arithmetic and an explicit Failed/recovery-capable run state machine.
+- Code-native top-down Player/Controller/Enemy/Core/Exit, an AHUD-owned native Slate HUD, and the fight/collect/extract loop.
+- Persistent R/N restart bindings, actual run/request ownership, exact next-seed LCG, CLI seed, HP/death, cooldowns and bounded enemy replans. Dash uses current combined movement, then flat current aim, then +X; input release/focus/reset lifecycle is covered.
+- Separate ordinary Editor/packaged input self-test: UE input injection and measured WASD/aim/attack/Dash/restarts, with setup teleports/public damage disclosed separately.
+- Passive same-run A* movement proof before gameplay smoke's first capture; bounded first/latest movement evidence and aggregate distance/time checks.
+- Render-owned screenshot token/run/request/frame/pixel/save completion, fresh PNG validation and delegate cleanup on success/failure/restart/EndPlay. The complete readable HUD replaces the earlier clipped-prefix result; original failed evidence remains historical.
+- Strict source/process/log gates, explicit diagnostic identities, original UAT/Pak/IoStore log correlation, project-local filesystem DDC/temp and Cook attachment/loose-store controls, plus frozen evidence digests.
+- The latest full Automation observed at this checkpoint was **119/119** at `diagnostic-cbd7ac3...`, with zero test/whole-log warnings/errors. The final clean candidate needs its own complete run; the old 63-test milestone is not the current checkpoint count.
 - Phase 3 architecture, walkthrough, interview guide, live drills, acceptance, evidence, and AI disclosure.
 
-This is branch/Draft PR candidate metadata. No `v0.3.0` tag or formal Release has been created.
+Generator version 1, layout-document schema v1 and all five original layout golden hashes are preserved. Determinism applies to initial model identities, not every render pixel, exposure frame or real-time playthrough. The packaged start capture may show initial exposure settling; it is not post-processed into a brighter image or presented as production polish.
+
+Observed package checkpoints are deliberately separate: clean `f235e46...` passed the actual three-target BuildPlugin matrix; clean `a9f56254f11554316302936926211e75d86d7f4d` passed the 193928–194106 BuildCookRun/ordinary capture/input/gameplay/four-negative chain and a 49-file index. The failed 191653 attempt remains retained. See `FINAL_HANDOFF.md` for exact artifacts; these checkpoints do not constitute one final all-16-gate revision.
+
+After the documentation/images commit, `VerifyPhase3.ps1` must produce a fresh **MachinePassed** result for that clean SHA. Actual six-image visual review and fresh remote PR review then supply the explicit records required by `FinalizeRelease.ps1`. Finalization is local readiness, not publication. PR #1 merge and a source-only `v0.3.0` GitHub Release are already authorized after all gates. At this pre-final documentation checkpoint, no `v0.3.0` tag or formal Release had been created. Only GitHub's default source archives are distributed; generated binary Release assets are not uploaded. Publication results belong in the final external/generated records, not a recursive tracked edit to insert this commit's own SHA.
 
 ## SeedForge 0.2.0
 

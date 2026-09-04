@@ -1,68 +1,96 @@
 # Phase 3 code walkthrough
 
-## Recommended reading order
+## Reading map
 
-1. `SeedForgeTypes.h` and `SeedForgeGenerator.cpp` — preserved layout input/output and hash boundary.
-2. `SeedForgeEncounter.h/.cpp` — pure encounter config/entities/result, stable selection, typed failures, independent hash.
-3. `SeedForgeGridPathfinder.h/.cpp` — pure request/result and deterministic bounded A*.
-4. `SeedForgeRunState.h/.cpp` — explicit state transitions, Core identity, exit lock, restart.
-5. `SeedForgeGameplayTypes.h/.cpp` — tuning, HUD snapshot, cell/world mapping, attack target selection.
-6. `SeedForgeAsync.cpp` and `SeedForgeWorldSubsystem.cpp` — preserved worker/newest-request/weak UObject boundary.
-7. `SeedForgeGameplayCoordinator.h/.cpp` — run ownership, spawn/cleanup, combat, pickup/exit, replan timers, smoke.
-8. `SeedForgeGameplayActors.h/.cpp` — Character, Controller, Enemy, Core, Exit, and Canvas HUD.
-9. `SeedForgePreviewActor.cpp` — apply-only HISM mode and blocking generated geometry.
-10. `SeedForgeDemoGameMode.cpp` and `DefaultInput.ini` — code-native startup and text input mappings.
-11. `SeedForgeEncounterTests.cpp`, `SeedForgeGridPathfinderTests.cpp`, `SeedForgeRunStateTests.cpp`, `SeedForgeGameplayTests.cpp`, and `SeedForgeGameplaySmokeTests.cpp` — executable contracts.
-12. `TestGameplay.ps1`, `PackageGameplay.ps1`, and `VerifyPhase3.ps1` — real process and distribution evidence.
+Runtime files below are under `Plugins/SeedForge/Source/SeedForgeRuntime`; test files are under `Plugins/SeedForge/Source/SeedForgeTests/Private`.
 
-## Encounter planner
+| Read | What to trace |
+|---|---|
+| SeedForgeTypes / Generator / Validator | Preserved seed/config, canonical layout and SFG1 identity |
+| SeedForgeEncounter | Ranked spawn selection, stable IDs, wide safety distance, independent SFE1 hash |
+| SeedForgeGridPathfinder | Checked neighbors, int64 costs, deterministic open ordering and budget semantics |
+| SeedForgeRunState / GameplayTypes | Failed versus Lost, Core eligibility, copied snapshots, Dash/attack math |
+| SeedForgeAsync / WorldSubsystem | Cancellation, newest request and weak UObject/Game Thread application |
+| SeedForgeGameplayCoordinator | Actual request attribution, run ownership, cleanup and smoke gate |
+| SeedForgeGameplayActors / PreviewActor | Persistent controller, Character/Enemy movement, AHUD-owned Slate, HISM collision |
+| SeedForgeCaptureTypes / GameplayCapture | Pure capture lifecycle and real viewport/render/pixel/processed adapter |
+| SeedForgeGameplayDiagnostics / GameplaySmoke | Bounded passive path proof, observer lifetime and additive smoke codec |
+| SeedForgeInputSelfTest | Opt-in ordinary input driver, exact-once cleanup and complete evidence validation |
 
-Start at `ValidateInputs`: config bounds, intact source layout hash, canonical endpoint membership, endpoint separation, and total cell capacity fail before selection. `RankCandidates` computes one deterministic score per canonical cell. Notice that `TSet` only tests occupancy; output order comes from explicit sorting and stable role loops.
+Then read `SeedForgeDemoGameMode.cpp`, `Config/DefaultInput.ini`, the focused audit tests, and the wrappers `TestInputSelfTest.ps1`, `TestGameplay.ps1`, `PackageGameplay.ps1`, `VerifyPhase3.ps1` and `FinalizeRelease.ps1`.
 
-Follow `ComputeCanonicalHash` byte by byte. Its marker, version, source layout hash, config, roles, IDs, and points are separate from `FSeedForgeGenerator::ComputeCanonicalHash`. This is how Phase 3 adds identity without invalidating 0.2.0 evidence.
+## Pure placement and A*
 
-## A* pathfinder
+Encounter validation fails before selection for invalid config/layout identity, endpoint membership or insufficient cells. Candidate sorting, not TSet iteration, fixes output order. Both generation and validation widen coordinate subtraction before Manhattan safety comparisons. Hashing includes versioned model inputs; do not confuse a new encounter hash with a changed generator hash.
 
-The open set stores node indices. Each expansion performs a visible comparator scan. Trace these keys:
+In A*, inspect `FSearchNode`, `ManhattanDistance` and `IsPreferred`. Costs/heuristics/F scores are int64; coordinates remain int32. Each neighbor sum is evaluated in int64 and range-checked before constructing FIntPoint. Direction order is `(+1,0), (0,+1), (-1,0), (0,-1)`; the comparator is `(F,H,Y,X)`.
 
-```text
-F = cost from start + Manhattan heuristic
-then H
-then cell Y
-then cell X
-```
+The loop removes the preferred open node, checks for goal, then checks the expansion budget. Only a non-goal expansion increments ExpandedNodes. Thus budget 1 can discover and select an adjacent goal successfully; `AlreadyAtGoal` uses zero expansions after input validation. BudgetExceeded/Unreachable return no partial successful path. Array Reserve is an allocation hint, not a cap on discovered nodes.
 
-The direction array locks East/South/West/North. The walkable `TSet` and point-to-node `TMap` are never iterated for a decision. Watch the budget check happen before another expansion and the result path get reconstructed through parent indices.
+## State and actual completion identity
 
-## State machine
+Follow these Coordinator boundaries:
 
-Read each method as a transition contract. Every method checks the current state before mutation. `StartPlaying` sorts and rejects duplicate expected IDs. `CollectCore` rejects unknown and duplicate events. `ReachExit` checks the derived unlock predicate. `RequestRestart` deliberately supports active and terminal runs, while `BeginGenerating` accepts only `Restarting`.
+1. StartRun increments RunGeneration, clears applied ID/old hashes/failure detail, requests legal restart transitions where needed, cancels work and clears run objects.
+2. It issues a WorldSubsystem request and records the returned pending request ID. A request during Generating supersedes the old one in that state.
+3. HandleGenerationApplied ignores zero/non-active completions. A matching failure enters typed Failed; a matching success passes `Completion.RequestId` to the private apply path.
+4. Apply validates and creates the real run, then records AppliedRequestId and logs `Applied request=... run=... gameplay=true.`
+5. The public value-apply overload cancels pending work and uses request 0. World fixtures can exercise this or fixture-delivered completions; neither alone proves a real packaged worker completion.
 
-## Coordinator request flow
+Read EnterRunFailure and ClearRunObjects together. Failure cancels generation/delegates, destroys owned run actors, clears layout/encounter/HP/cooldowns, calls FailRun and exposes a typed snapshot. EndPlay uses the same cleanup boundary. Same-run smoke apply alone preserves the original watchdog; default cleanup clears it. That preservation is not a second 30-second timer.
 
-1. `BeginPlay` parses text command arguments and binds once to the WorldSubsystem.
-2. `StartRun` advances ownership, cancels old generation, clears actors/timers, resets HP/cooldowns, and requests a layout.
-3. `HandleGenerationApplied` rejects any non-active request ID.
-4. `ApplyGeneratedLayout` validates, plans, creates apply-only HISM visualization, resolves/spawns the Character, spawns roles in stable order, starts the state machine, and arms bounded timers.
-5. `ClearRunObjects` is the restart/teardown choke point.
+## Controller, aim and Dash
 
-The Gameplay Actors do not copy layout truth. Their stable cells come from the encounter plan; enemies receive only path waypoints; HUD reads one snapshot.
+R/N live in `ASeedForgePlayerController::SetupInputComponent`, which removes duplicate named restart bindings before binding once. The controller resolves one Coordinator even when no pawn is possessed. Character bindings are only movement, Attack and Dash.
 
-## Combat and interaction
+Dash reads current InputComponent axis sums at action time; axis delegates have not yet updated cached movement fields. Inspect ResolveDashDirection for finite checks, clamp/normalization and movement→aim→+X fallback. PawnClientRestart, UnPossessed and FlushPressedKeys clear cached intent.
 
-`FSeedForgeGameplayMath::SelectAttackTarget` filters live candidates by two-dimensional range/arc and selects the lowest stable ID. `TryPlayerAttack` owns the cooldown and enemy HP. `ApplyPlayerDamage` owns Player HP and invokes the state machine on death.
+PlayerTick deprojects the viewport cursor to the Character-height plane. SetAimWorldPoint changes aim/rotation only for a valid normalized XY direction. Failed deprojection leaves last aim intact; it does not follow movement automatically.
 
-`TickInteractions` is shared by the normal timer and smoke driver. It invokes `CollectCore` before destroying a pickup, mirrors only the state machine's unlock value into exit presentation, and invokes `ReachExit` on proximity. `ReplanEnemies` alone invokes A*; enemy Tick never searches.
+## Combat, HUD and actor boundaries
 
-## Smoke trace
+SelectAttackTarget filters range/arc and chooses the lowest stable ID. TryPlayerAttack consumes a valid attack cooldown even on a miss, owns enemy HP and destroys a killed actor. ApplyPlayerDamage owns player HP and enters Lost through the state machine. TickInteractions validates a Core transition before destruction and derives exit presentation from state-machine eligibility.
 
-Read `StartGameplaySmoke` for identity/count validation, then the `EGameplaySmokeStage` switch. The driver teleports only to shorten verification; it still uses the real Character, attack cooldown/damage, Core actors, proximity path, exit actor, and state machine. `FSeedForgeGameplaySmokeCodec` emits fixed-order JSON with exact unsigned strings. PowerShell treats the runtime trace as untrusted output and reparses/counts/checks every artifact.
+ReplanEnemies calls A* from the timer and publishes an observation after SetPath. Enemy Tick records the exact revision, consumed waypoint, from/target/to, delta, frame and sequence after its normal movement. The observation must not change speed, arrival or path decisions.
+
+AHUD's DrawHUD now creates/updates native Slate text. PostRender visibility checks and RemoveOverlay/EndPlay own removal. Read the tagged SBox and its padding/wrapping; do not describe this as Canvas text. HUD reads a snapshot rather than mutating gameplay.
+
+## Capture lifecycle: more than a PNG header
+
+The pure lifecycle is `AwaitRenderedFrame -> AwaitPixels -> AwaitProcessed -> Complete`. Tokens/run/path/dimensions/frame order must match. The adapter:
+
+- binds the owning viewport's rendered callback and waits for world/render primitive readiness;
+- requests a screenshot including UI only after that boundary;
+- verifies callback pixels and saves them;
+- requires processed completion and sufficient saved bytes;
+- cancels owned callbacks/watchdog before publishing the receipt.
+
+Cancel/timeout/EndPlay never steal an unrelated screenshot request. The single-capture mode keeps a requested fixed filename; the three gameplay filenames include their unique token. PowerShell independently verifies receipt order, exact current-run PNG cardinality, fresh timestamps, containment/reparse rules, dimensions, integrity and full decode. A valid header, delayed sleep or zero native exit is insufficient.
+
+## Ordinary input proof versus passive gameplay proof
+
+H6's controller-owned component is dormant unless explicitly enabled. BeforeInput queues simulated keys through the viewport; normal UE dispatch handles mappings. Pointer intent is repeatedly fed through guarded scene OnMouseMove so ordinary Slate cursor refresh cannot erase a one-shot aim. There is no OS cursor API or direct aim fallback when a real viewport is unavailable.
+
+AfterInput latches the actual launch/cooldown at injection time. World-post observations measure physical displacement. The driver records 13 effects/four runs/ten transitions/four queued requests, including Lost/same/new/rapid restart. Setup poses and public damage are disclosed separately. Cleanup releases keys and observers before one completion.
+
+H7's noncopyable passive observer owns path/queued-run/World handles. It selects a real owned enemy, consumes the existing H5 proof and freezes after two or more observations/20 units. It detaches before the first capture. A destroyed target cancels observation; AwaitPathProof treats lost bindings on incomplete proof as PathObservationInvalidated, not success.
+
+ValidatePathEvidence recomputes native A* and compares route/waypoints, exact identities and frames before first capture. Two retained samples with count 2 must be contiguous and respect waypoint arrival. With count >2, the straight gap between retained samples must fit total distance and hidden-time speed bounds; missing samples are not fabricated. External PS checks these serialized relationships but does not claim to recompute the generator/A*.
+
+## Tests and verification reading
+
+Useful focused files (with the SeedForge prefix) include CoordinateSafetyTests, RunIdentityTests, RestartInputTests, DashInputTests, GameplayTests (including HUD lifecycle), CaptureLifecycleTests, CaptureComponentTests, GameplayPathIntegrationTests, RunIntegrationTests, InputSelfTestTests and GameplaySmokeTests. Locate exact registered filter names before invoking a focused test. Latent World fixtures advance once per real GFrameCounter; same-frame loops do not prove TimerManager progression.
+
+The latest full result is diagnostic 119/119, not a final clean candidate result. Clean a9f5625 separately passed the actual packaged sequence. The 194106 outer package manifest freezes earlier child summaries/logs/trace/PNG digests so a later child cannot silently rewrite their baseline. FinalizeRelease requires exact-candidate machine, visual and remote review evidence; static docs and last-pointer files alone are not authority.
 
 ## Debugger exercises
 
-- Break on encounter candidate sorting for seed 24301 and inspect stable role IDs.
-- Change a path budget from 1024 to 1 and observe `BudgetExceeded` without a partial success path.
-- Trigger `CollectCore(0)` twice and confirm the second event leaves state unchanged.
-- Press N during generation and watch the old subsystem result fail the active request-ID gate.
-- Break in `ClearRunObjects` during R restart and inspect timer/actor/path cleanup.
-- Run smoke and break on the transition from `CollectCores` to `ReachExit`.
+- Inspect MAX/MIN int32 neighbor rejection without changing tie-breaking.
+- Select an adjacent goal at budget 1 and observe that the goal itself is not charged.
+- During R/N, compare RunGeneration, pending request and actual applied request; do not assume equal counters.
+- Break on Failed cleanup, then recover via the controller while unpossessed.
+- Step through same-frame W+D+Space and latch PendingLaunchVelocity before movement consumes it.
+- Break at render, pixels and processed callbacks; inspect token/frame ownership and cleanup.
+- Observe H7 detaching its three handles before the start capture request.
+
+For implementation drills, use [LIVE_CHANGE_DRILLS.md](LIVE_CHANGE_DRILLS.md); do not modify a frozen verification candidate just to demonstrate a debugger exercise.

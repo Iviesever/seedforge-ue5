@@ -1,35 +1,32 @@
 # Phase 3 acceptance matrix
 
-Final status is authoritative only when `Artifacts/Reports/phase3-verification-last.json`, plugin/package manifests, gameplay trace, and Draft PR all name the same clean revision.
+This matrix is a route to evidence, not a static certificate. The independent audit repaired the original 63-test handoff's gaps. Checkpoint results below are observed at their recorded revisions; after documentation/images change, all 16 final gates must run again on one clean candidate.
 
-| Goal condition | Proof | Evidence | Final status |
-|---|---|---|---|
-| Latest `origin/main` base | fresh fetch; base `9a306f8...` | PACT-30 evidence | Passed |
-| Independent feature branch | `feat/phase3-playable-vertical-slice` from base | Git history | Passed |
-| Preserve 0.2.0 | tag/release fixed; original tests/goldens green | PACT-30/31 evidence | Passed |
-| Pure encounter plan | deterministic counts/IDs/cells/hash and typed failures | `SeedForge.Model.Encounter.*` | Passed |
-| Pure bounded A* | all statuses, exact tie route, budget | `SeedForge.Model.Path.*` | Passed |
-| Pure state machine | win/loss/restart/illegal/Core identity | `SeedForge.Model.RunState.*` | Passed |
-| Code-native player loop | Character/Controller/input/camera/attack/dash/HP | Gameplay tests + Editor capture | Passed |
-| Five enemy pursuit | stable encounter + 2 Hz bounded A* handoff | source audit + Gameplay smoke | Passed |
-| Three Cores and exit | production proximity, unlock, win | Editor + packaged JSON actions | Passed |
-| HUD requirements | HP/Core/Seed/Run/controls/terminal/exit | inspected start/win PNGs | Passed |
-| Same/new seed support | R/N bindings and run cleanup/next-seed path | state tests + source audit | Passed |
-| CLI seed | `-SeedForgeSeed=<uint64>` | Editor/package traces for 24301 | Passed |
-| Normal interaction mode | launch without smoke flag reaches ready | normal Editor/package logs | Passed |
-| Automated gameplay smoke | production path, watchdog/non-zero failures | `TestGameplay.ps1` + trace | Passed |
-| JSON reparse | strict schema/identity/count/state/action checks | gameplay summaries | Passed |
-| Screenshots | Editor and packaged start/combat/win files | `docs/images` + `Artifacts/Media` | Passed with documented packaged combat-frame limitation |
-| Existing 41 tests | included in complete 63-test run | Automation report | Passed |
-| New tests | 22 new model/gameplay/smoke tests | Automation report | Passed |
-| Editor Development | UBT | build log | Passed |
-| Runtime/Game/Shipping plugin | BuildPlugin three targets | plugin manifest/log | Passed |
-| Win64 Build/Cook/Stage/Pak/Archive | BuildCookRun | gameplay package manifest/log | Passed |
-| Ordinary packaged EXE | non-smoke capture path exit 0 | `last-gameplay-package.json` | Passed |
-| Packaged gameplay smoke | exit 0, trace, images, strict log audit | packaged summary/trace | Passed |
-| Documentation/AI honesty | Phase 3 docs and disclosure | tracked docs | Passed |
-| Repository clean/auditable | no generated paths, placeholders, diff errors | AuditRepository + Git | Passed |
-| Exact final revision | all manifests agree after finalization commit | `phase3-verification-last.json` | Passed |
-| Branch pushed / Draft PR | remote branch and PR body evidence | GitHub Draft PR #1 | Passed |
+| Gate | Required proof | Observed audit checkpoint / final authority |
+|---|---|---|
+| 1. Repository/base | clean audit, preserved 0.2.0, fresh Git base | Local audits pass; final fresh fetch and candidate audit required |
+| 2. Editor Development | actual UBT, exit 0, strict complete logs | H7 diagnostic build `190812` passes; final candidate build required |
+| 3. Complete Automation | no warnings/failures/not-run/in-process | `191006`: 119/119, zero whole-log warnings/errors; diagnostic checkpoint |
+| 4. Phase 2 chain | canonical JSON, Diff, 10k benchmark, old goldens | Preserved in source/tests; fresh revision-bound 10k report required |
+| 5. Focused tests | gameplay, smoke, path, encounter, state and audit | H7 smoke 7/7 plus prior focused RED/GREEN; final namespace runs required |
+| 6. Editor gameplay | real path before capture, attack/collect/extract | `191146`: 8 real moves / 20.9972 units, 3 decoded/inspected PNGs |
+| 7. BuildPlugin | actual Editor Dev / Game Dev / Game Shipping | Clean f235e46 three-target checkpoint and 58-file index; rerun with final H7 source |
+| 8. Win64 package | actual Build/Cook/Stage/Pak/Archive | Clean a9f5625 `193928` passes, local DDC/temp/loose Cook and original Pak log association |
+| 9. Ordinary packaged input | no gameplay-smoke driver; real mapped input | `194029`: WASD/aim/LMB/Space/R/N, 13 effects, actual motion and controlled exit |
+| 10. Packaged gameplay | path, combat, pickups, exit and failure exits | `194036` positive; four `194046..194056` expected-negative processes pass |
+| 11. Restart identities | same/new/rapid, fresh actors and ownership | Editor and packaged four-run input scenarios pass; real async newest-request ownership |
+| 12. JSON reparse | exact uint64/type/identity/action/path relations | Native model/A* validation plus external input/path/capture validators |
+| 13. Visual materialization | three original 1280x720 frames in each environment | Both checkpoint triplets inspected; new six-image final review still required |
+| 14. Strict logs/storage | no unexpected warnings/errors or escaped storage | Full-log gates and precise environment profile; filesystem DDC/temp and Cook controls |
+| 15. Digests | archive, sidecar, nested records and final index | Package a9f5625 rehashed; 49-file independent index; final candidate seal required |
+| 16. Clean/remote | final same HEAD, fresh PR/base/reviews/checks | Pending final candidate push, fetch/API review and readiness records |
 
-`v0.3.0` is candidate metadata only. No tag, formal Release, or merge is authorized.
+Exact checkpoint paths and SHA values are in [the audit journal](../tasks/20260904-102407-phase3-independent-release-audit/progress.md), [H evidence](../tasks/20260904-102407-phase3-independent-release-audit/sf-ira-008-evidence.md), and the original generated files. The default seed retains layout `7425849530159566348` and encounter `15303214708604970503`; the original 41 tests and all five layout goldens remain part of the complete suite.
+
+## Authority flow
+
+`VerifyPhase3.ps1` captures one clean revision, checks it around every process, freezes child evidence immediately, and returns `MachinePassed` only. Its unique summary and independent index are under `Artifacts/Reports/Phase3Verification/`; `phase3-verification-last.json` is a convenience pointer, not authority merely because it exists.
+
+The primary then inspects all six original Editor/packaged images, pushes the exact validated feature commit while PR #1 remains Draft, and freshly reads that matching remote head/base and reviews. Candidate-bound visual and remote JSON records are required by `FinalizeRelease.ps1`, which verifies indexes/digests and writes `release-readiness.json`. It does not itself merge or publish.
+
+The user has authorized merge and a source-only v0.3.0 Release after these gates pass. Publication is a subsequent verified GitHub operation; no plugin/demo binary assets are uploaded. Dirty `DiagnosticPassed` evidence and historical handoffs cannot satisfy the final gates.
