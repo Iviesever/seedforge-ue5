@@ -30,6 +30,8 @@
 
 Coordinator/state recovery is part of this fix. Recovery from configured R/N while no Pawn exists is task B / SF-IRA-003; this finding is not certified end-to-end until B's persistent input tests pass as well.
 
+Task B subsequently proved Failed/unpossessed recovery through a real Controller R input event in `Artifacts/Reports/automation-20260904-110401/index.json`, with 001 regression 6/6 at `automation-20260904-110448`. Local failure/recovery is now GREEN; Editor/packaged final gates and the input self-test remain required for release.
+
 ## GREEN and exit-status root cause
 
 - Centralized `EnterRunFailure` now owns cancellation, generation delegate removal, actor/timer/capture cleanup, HP/cooldown/failed-identity reset, explicit Failed state and typed HUD detail. Recovery rebinds the generation delegate. Stale/non-owned/zero request completions do not alter the run.

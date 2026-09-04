@@ -399,6 +399,8 @@ FSeedForgeGameplaySnapshot ASeedForgeGameplayCoordinator::GetSnapshot() const
     Snapshot.Seed = Seed;
     Snapshot.LayoutHash = Layout.CanonicalHash;
     Snapshot.EncounterHash = EncounterPlan.CanonicalHash;
+    Snapshot.RunGeneration = RunGeneration;
+    Snapshot.PendingRequestId = ActiveRequestId;
     Snapshot.RunState = RunState.GetState();
     Snapshot.PlayerHealth = PlayerHealth;
     Snapshot.PlayerMaxHealth = Tuning.PlayerMaxHealth;
@@ -547,6 +549,10 @@ void ASeedForgeGameplayCoordinator::ClearRunObjects()
     Visualization = nullptr;
     if (IsValid(Player))
     {
+        if (AController* Controller = Player->GetController())
+        {
+            Controller->UnPossess();
+        }
         Player->SetGameplayCoordinator(nullptr);
         Player->Destroy();
     }

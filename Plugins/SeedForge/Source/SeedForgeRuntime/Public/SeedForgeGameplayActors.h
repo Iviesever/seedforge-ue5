@@ -36,8 +36,6 @@ private:
     void MoveRight(float Value);
     void Attack();
     void Dash();
-    void RestartSameSeed();
-    void StartNewSeed();
     void HideAttackPulse();
 
     UPROPERTY(VisibleAnywhere, Category = "SeedForge")
@@ -70,6 +68,14 @@ public:
 protected:
     virtual void BeginPlay() override;
     virtual void PlayerTick(float DeltaTime) override;
+    virtual void SetupInputComponent() override;
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+private:
+    void RestartSameSeed();
+    void StartNewSeed();
+    ASeedForgeGameplayCoordinator* ResolveGameplayCoordinator();
+    TWeakObjectPtr<ASeedForgeGameplayCoordinator> GameplayCoordinator;
 };
 
 UCLASS()

@@ -11,6 +11,7 @@ public class SeedForgeTests : ModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "InputCore",
             "SeedForgeEditor",
             "SeedForgeRuntime",
             "Slate"

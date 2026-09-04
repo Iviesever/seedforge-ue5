@@ -168,8 +168,6 @@ void ASeedForgePlayerCharacter::SetupPlayerInputComponent(UInputComponent* Playe
     PlayerInputComponent->BindAxis(TEXT("MoveRight"), this, &ASeedForgePlayerCharacter::MoveRight);
     PlayerInputComponent->BindAction(TEXT("Attack"), IE_Pressed, this, &ASeedForgePlayerCharacter::Attack);
     PlayerInputComponent->BindAction(TEXT("Dash"), IE_Pressed, this, &ASeedForgePlayerCharacter::Dash);
-    PlayerInputComponent->BindAction(TEXT("RestartSameSeed"), IE_Pressed, this, &ASeedForgePlayerCharacter::RestartSameSeed);
-    PlayerInputComponent->BindAction(TEXT("StartNewSeed"), IE_Pressed, this, &ASeedForgePlayerCharacter::StartNewSeed);
 }
 
 void ASeedForgePlayerCharacter::MoveForward(float Value)
@@ -214,22 +212,6 @@ void ASeedForgePlayerCharacter::Dash()
     LaunchCharacter(Direction.GetSafeNormal2D() * Tuning.DashImpulse, true, false);
 }
 
-void ASeedForgePlayerCharacter::RestartSameSeed()
-{
-    if (ASeedForgeGameplayCoordinator* Run = Coordinator.Get())
-    {
-        Run->RestartSameSeed();
-    }
-}
-
-void ASeedForgePlayerCharacter::StartNewSeed()
-{
-    if (ASeedForgeGameplayCoordinator* Run = Coordinator.Get())
-    {
-        Run->StartNewSeed();
-    }
-}
-
 void ASeedForgePlayerCharacter::HideAttackPulse()
 {
     AttackPulse->SetVisibility(false);
@@ -241,6 +223,73 @@ ASeedForgePlayerController::ASeedForgePlayerController()
     bEnableClickEvents = false;
     bEnableMouseOverEvents = false;
     PrimaryActorTick.bCanEverTick = true;
+}
+
+void ASeedForgePlayerController::SetupInputComponent()
+{
+    Super::SetupInputComponent();
+    for (int32 Index = InputComponent->GetNumActionBindings() - 1; Index >= 0; --Index)
+    {
+        const FName Action = InputComponent->GetActionBinding(Index).GetActionName();
+        if (Action == TEXT("RestartSameSeed") || Action == TEXT("StartNewSeed"))
+        {
+            InputComponent->RemoveActionBinding(Index);
+        }
+    }
+    InputComponent->BindAction(TEXT("RestartSameSeed"), IE_Pressed,
+        this, &ASeedForgePlayerController::RestartSameSeed);
+    InputComponent->BindAction(TEXT("StartNewSeed"), IE_Pressed,
+        this, &ASeedForgePlayerController::StartNewSeed);
+}
+
+ASeedForgeGameplayCoordinator* ASeedForgePlayerController::ResolveGameplayCoordinator()
+{
+    if (ASeedForgeGameplayCoordinator* Existing = GameplayCoordinator.Get())
+    {
+        if (!Existing->IsActorBeingDestroyed())
+        {
+            return Existing;
+        }
+    }
+    GameplayCoordinator.Reset();
+    ASeedForgeGameplayCoordinator* Unique = nullptr;
+    for (TActorIterator<ASeedForgeGameplayCoordinator> It(GetWorld()); It; ++It)
+    {
+        if (It->IsActorBeingDestroyed())
+        {
+            continue;
+        }
+        if (Unique)
+        {
+            // A host with multiple run owners is ambiguous; never pick by iteration order.
+            return nullptr;
+        }
+        Unique = *It;
+    }
+    GameplayCoordinator = Unique;
+    return Unique;
+}
+
+void ASeedForgePlayerController::RestartSameSeed()
+{
+    if (ASeedForgeGameplayCoordinator* Run = ResolveGameplayCoordinator())
+    {
+        Run->RestartSameSeed();
+    }
+}
+
+void ASeedForgePlayerController::StartNewSeed()
+{
+    if (ASeedForgeGameplayCoordinator* Run = ResolveGameplayCoordinator())
+    {
+        Run->StartNewSeed();
+    }
+}
+
+void ASeedForgePlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    GameplayCoordinator.Reset();
+    Super::EndPlay(EndPlayReason);
 }
 
 void ASeedForgePlayerController::BeginPlay()

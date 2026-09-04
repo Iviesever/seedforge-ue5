@@ -49,6 +49,8 @@ struct SEEDFORGERUNTIME_API FSeedForgeGameplaySnapshot
     uint64 Seed = 0;
     uint64 LayoutHash = 0;
     uint64 EncounterHash = 0;
+    uint64 RunGeneration = 0;
+    uint64 PendingRequestId = 0;
     ESeedForgeRunState RunState = ESeedForgeRunState::Generating;
     float PlayerHealth = 0.0f;
     float PlayerMaxHealth = 0.0f;
