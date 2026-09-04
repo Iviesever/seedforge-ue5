@@ -64,6 +64,7 @@ struct SEEDFORGERUNTIME_API FSeedForgeGameplaySnapshot
 class SEEDFORGERUNTIME_API FSeedForgeGameplayMath
 {
 public:
+    static FVector ResolveDashDirection(float ForwardAxis, float RightAxis, const FVector& Aim);
     static FVector CellToWorld(
         const FIntPoint& Cell,
         float CellSize,

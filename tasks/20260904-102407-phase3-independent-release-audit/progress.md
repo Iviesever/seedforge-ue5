@@ -26,7 +26,7 @@
 - [x] Preserve source audit packet without rewriting historical claims.
 - [x] A — SF-IRA-001 core: RED reproduced, central failure/recovery GREEN, 6 focused + 69 full tests, Grid/Encounter real failure processes exit 2; persistent R/N recovery remains dependent on B.
 - [x] B — SF-IRA-003 local: real-input RED→GREEN, 3 focused + 6 failure regression + 72 full tests; packaged input certification remains H/gates 9/11.
-- [ ] C — SF-IRA-004: combined live Dash direction.
+- [x] C — SF-IRA-004 local: 5 real-input/pure RED→GREEN tests, 3 restart regressions, final full 77/77; includes same-frame movement+Space, focus flush, unpossessed release, and cooldown preservation.
 - [ ] D — SF-IRA-006: safe coordinate arithmetic.
 - [ ] E — SF-IRA-007/009: true request identity and pending hashes.
 - [ ] F — SF-IRA-005: render-owned screenshots and strict PNG proof.
@@ -40,4 +40,6 @@
 
 Task A commit: `b02bd9e2e5a2e379f99d545be635c5447921eb03`; RED/GREEN/process evidence is in `sf-ira-001-evidence.md`. Latest full suite is 69/69 with zero test warnings/failures, not yet final certification. Positive Editor gameplay smoke also passed at this clean commit: `Artifacts/Reports/Gameplay/20260904-104817/summary.json`.
 
-Task B has passed real Controller input/possession tests; its evidence and fixture root-cause packet are recorded here. Latest full suite is 72/72. Next: task C, resolve Dash from both live axes then aim, with input-reset/focus-loss coverage. Final Gate 14 still needs the whole-process UE Dataflow initialization log diagnostic reviewed; it is not silently allow-listed. Previous package runs are historical, not independent audit certification.
+Task B commit: `5bf6bfeada7b4889ad4fc2c92988092c4bb14a1f`; real Controller input/possession evidence and its fixture root-cause packet are recorded here.
+
+Task C has passed the combined live Dash contract and independent read-only review; see `sf-ira-004-evidence.md`. Latest final full suite is 77/77, zero test warnings/failures/not-run/in-process (`automation-20260904-112151`). Next: task D / SF-IRA-006, checked coordinate neighbors and wide Manhattan arithmetic without changing existing goldens. Final Gate 14 still needs the whole-process UE Dataflow initialization log diagnostic reviewed; it is not silently allow-listed. Task G must also address the observed UBA diagnostic/trace-path boundary. Previous package runs are historical, not independent audit certification.

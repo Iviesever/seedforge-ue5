@@ -27,6 +27,9 @@ public:
     float GetAttackCooldownSeconds() const;
     float GetDashCooldownSeconds() const;
     void ShowAttackPulse();
+    void ResetMovementIntent();
+    virtual void PawnClientRestart() override;
+    virtual void UnPossessed() override;
 
 protected:
     virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
@@ -52,7 +55,8 @@ private:
 
     TWeakObjectPtr<ASeedForgeGameplayCoordinator> Coordinator;
     FVector AimDirection = FVector::ForwardVector;
-    FVector LastMoveDirection = FVector::ForwardVector;
+    float CurrentForwardAxis = 0.0f;
+    float CurrentRightAxis = 0.0f;
     double NextDashTime = 0.0;
     FTimerHandle AttackPulseTimer;
 };
@@ -64,6 +68,7 @@ class SEEDFORGERUNTIME_API ASeedForgePlayerController : public APlayerController
 
 public:
     ASeedForgePlayerController();
+    virtual void FlushPressedKeys() override;
 
 protected:
     virtual void BeginPlay() override;

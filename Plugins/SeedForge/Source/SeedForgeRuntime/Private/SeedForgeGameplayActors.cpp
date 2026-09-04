@@ -172,20 +172,38 @@ void ASeedForgePlayerCharacter::SetupPlayerInputComponent(UInputComponent* Playe
 
 void ASeedForgePlayerCharacter::MoveForward(float Value)
 {
-    if (!FMath::IsNearlyZero(Value))
+    CurrentForwardAxis = FMath::IsFinite(Value) ? FMath::Clamp(Value, -1.0f, 1.0f) : 0.0f;
+    if (!FMath::IsNearlyZero(CurrentForwardAxis))
     {
-        LastMoveDirection = FVector(FMath::Sign(Value), 0.0, 0.0);
-        AddMovementInput(FVector::ForwardVector, Value);
+        AddMovementInput(FVector::ForwardVector, CurrentForwardAxis);
     }
 }
 
 void ASeedForgePlayerCharacter::MoveRight(float Value)
 {
-    if (!FMath::IsNearlyZero(Value))
+    CurrentRightAxis = FMath::IsFinite(Value) ? FMath::Clamp(Value, -1.0f, 1.0f) : 0.0f;
+    if (!FMath::IsNearlyZero(CurrentRightAxis))
     {
-        LastMoveDirection = FVector(0.0, FMath::Sign(Value), 0.0);
-        AddMovementInput(FVector::RightVector, Value);
+        AddMovementInput(FVector::RightVector, CurrentRightAxis);
     }
+}
+
+void ASeedForgePlayerCharacter::ResetMovementIntent()
+{
+    CurrentForwardAxis = 0.0f;
+    CurrentRightAxis = 0.0f;
+}
+
+void ASeedForgePlayerCharacter::PawnClientRestart()
+{
+    ResetMovementIntent();
+    Super::PawnClientRestart();
+}
+
+void ASeedForgePlayerCharacter::UnPossessed()
+{
+    ResetMovementIntent();
+    Super::UnPossessed();
 }
 
 void ASeedForgePlayerCharacter::Attack()
@@ -208,8 +226,12 @@ void ASeedForgePlayerCharacter::Dash()
     }
     const FSeedForgeGameplayTuning Tuning;
     NextDashTime = Now + Tuning.DashCooldownSeconds;
-    const FVector Direction = LastMoveDirection.IsNearlyZero() ? AimDirection : LastMoveDirection;
-    LaunchCharacter(Direction.GetSafeNormal2D() * Tuning.DashImpulse, true, false);
+    // UE sums current axes before actions, but dispatches axis callbacks after actions.
+    // Sample the summed values so press/release plus Space in one frame is current.
+    const float Forward = InputComponent ? InputComponent->GetAxisValue(TEXT("MoveForward")) : CurrentForwardAxis;
+    const float Right = InputComponent ? InputComponent->GetAxisValue(TEXT("MoveRight")) : CurrentRightAxis;
+    const FVector Direction = FSeedForgeGameplayMath::ResolveDashDirection(Forward, Right, AimDirection);
+    LaunchCharacter(Direction * Tuning.DashImpulse, true, false);
 }
 
 void ASeedForgePlayerCharacter::HideAttackPulse()
@@ -240,6 +262,15 @@ void ASeedForgePlayerController::SetupInputComponent()
         this, &ASeedForgePlayerController::RestartSameSeed);
     InputComponent->BindAction(TEXT("StartNewSeed"), IE_Pressed,
         this, &ASeedForgePlayerController::StartNewSeed);
+}
+
+void ASeedForgePlayerController::FlushPressedKeys()
+{
+    Super::FlushPressedKeys();
+    if (ASeedForgePlayerCharacter* PlayerCharacter = Cast<ASeedForgePlayerCharacter>(GetPawn()))
+    {
+        PlayerCharacter->ResetMovementIntent();
+    }
 }
 
 ASeedForgeGameplayCoordinator* ASeedForgePlayerController::ResolveGameplayCoordinator()

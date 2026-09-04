@@ -16,6 +16,28 @@ const TCHAR* LexToString(ESeedForgeRunFailureCode Code)
     }
 }
 
+FVector FSeedForgeGameplayMath::ResolveDashDirection(float ForwardAxis, float RightAxis, const FVector& Aim)
+{
+    if (FMath::IsFinite(ForwardAxis) && FMath::IsFinite(RightAxis))
+    {
+        FVector Movement(FMath::Clamp(ForwardAxis, -1.0f, 1.0f),
+            FMath::Clamp(RightAxis, -1.0f, 1.0f), 0.0);
+        if (Movement.Normalize())
+        {
+            return Movement;
+        }
+    }
+    if (FMath::IsFinite(Aim.X) && FMath::IsFinite(Aim.Y) && FMath::IsFinite(Aim.Z))
+    {
+        FVector FlatAim(Aim.X, Aim.Y, 0.0);
+        if (FlatAim.Normalize())
+        {
+            return FlatAim;
+        }
+    }
+    return FVector::ForwardVector;
+}
+
 FVector FSeedForgeGameplayMath::CellToWorld(
     const FIntPoint& Cell,
     float CellSize,
